@@ -236,6 +236,15 @@ self-contained performance change that applied to this tree:
 - `5c5e6b1651` — `VoxelShape::join_is_not_empty` merges indices on the stack, heap only past 16 cells.
 - `b17d429e33` — bulk section-major `lod::summarize` (7.22x upstream): uniform light sweep,
   resolved kept-states, one boundary read per section.
+- `5db9bc3f45` — inline single-box `VoxelShape`, O(1) collide fast path (the mesher's
+  `block_collision_scan.rs` keeps this tree's older form, which already uses `shape.moved`).
+- `d41da14ca2` — `terrain.wgsl` RGSS/vertex ALU: `filtering_uniform` packs the sprite width,
+  single-texel mip level and `log2(width)`, `rotated_grid` takes its mip level from squared
+  gradients with a single-texel early-out, `sample_rgss` early-outs on squared derivatives.
+  Adapted to this tree's terrain.wgsl (no `sprite_at`/`TerrainWire` split here).
+- `1fd5f925a8` — precomputed `BakedModel` `CullFlags` (`catalog::CullFlags`) and stack-backed
+  `model_slots_at_small`; the mesher tests only the cull directions the parts use and skips a
+  block with nothing visible and no uncullable face. (Its `AoInfo` half was already ported.)
 
 ### Upstream performance work still to port (highest first)
 
@@ -243,7 +252,6 @@ Measured gains are upstream's own benchmark numbers; each needs adapting to this
 
 | Commit | Gain | What |
 | --- | --- | --- |
-| `1fd5f925a8` (rest) | +6.6% forest, -119..263 MB | precomputed `BakedModel` `cull_mask` in the mesher |
 | `eee912b040` | +4.3..8.4% RD16 | spatial front-to-back meshlet clustering in the mesher |
 | `ba54be7849` (rest) | +7.6..8.9% RD16 | `glyph_scratch`, inline `DrawnKey` for the HUD |
 | `d41da14ca2` | +2.6..7.9% RD16 | `terrain.wgsl` RGSS/vertex ALU, single-gradient solid finish |

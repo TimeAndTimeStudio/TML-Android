@@ -14,7 +14,7 @@ use crate::{
     blocks::{BlockFacts, RenderShape},
     chunk::{Chunk, MIN_Y},
     graphics::LeafCullingMode,
-    models::catalog::BakedFace,
+    models::catalog::{BakedFace, CullFlags},
 };
 use horizon_assets::model::Direction as ModelDirection;
 use horizon_core::{
@@ -1422,7 +1422,8 @@ impl Mesher<'_> {
         let info = &self.tables.info;
         let full_faces = &self.tables.full_faces;
         let catalog = &self.render.model_catalog;
-        let mut models = Vec::new();
+        let cull_flags = catalog.cull_flags();
+        let mut model_slots: smallvec::SmallVec<[u32; 8]> = smallvec::SmallVec::new();
         for y in 0..16 {
             for z in 0..16 {
                 for x in 0..16 {
@@ -1456,14 +1457,80 @@ impl Mesher<'_> {
                     }
                     let world = BlockPos::new(center.x * 16 + x, base_y + y, center.z * 16 + z);
                     if catalog
-                        .models_at(BlockStateId(id), world, &mut models)
+                        .model_slots_at_small(BlockStateId(id), world, &mut model_slots)
                         .is_err()
                     {
                         continue;
                     }
+                    let Some(&first_slot) = model_slots.first() else {
+                        continue;
+                    };
+                    // The union of every part's cull directions: only those faces can be
+                    // hidden by a neighbour, so only those need a `should_render_face` test.
+                    let mut combined_flags = CullFlags::EMPTY;
+                    for &slot in &model_slots {
+                        combined_flags = combined_flags.union(cull_flags[slot as usize]);
+                    }
+                    let cull_mask = combined_flags.cull_mask();
+                    let has_uncullable = combined_flags.has_uncullable();
+                    let mut visible_mask = 0u8;
+                    let interior_leaf = state.leaves
+                        && self.leaf_culling.is_interior()
+                        && scratch.leaf.interior(self.leaf_culling, x, y, z);
+                    if cull_mask != 0 {
+                        for d in Direction::ALL {
+                            let bit = 1u8 << (d as u8);
+                            if cull_mask & bit == 0 {
+                                continue;
+                            }
+                            let [dx, dy, dz] = d.normal();
+                            let neighbor = pad.blocks[pi(x + dx, y + dy, z + dz)];
+                            // `should_render_face`'s first test, without its lookups: a
+                            // full occlusion face toward this block hides the face.
+                            if full_faces[neighbor as usize] >> d.opposite() as u8 & 1 != 0 {
+                                continue;
+                            }
+                            let other = &info[neighbor as usize];
+                            // LeavesBlock.skipRendering with opaque leaves.
+                            let opaque_leaves = !self.cutout_leaves && state.leaves && other.leaves;
+                            let culled_leaf = match self.leaf_culling {
+                                LeafCullingMode::Hollow | LeafCullingMode::Hidden => {
+                                    state.leaves
+                                        && other.leaves
+                                        && leaf_culling::in_section(x + dx, y + dy, z + dz)
+                                        && (self.leaf_culling == LeafCullingMode::Hollow
+                                            || leaf_culling::backed(
+                                                pad,
+                                                info,
+                                                region,
+                                                base_y,
+                                                [x + 2 * dx, y + 2 * dy, z + 2 * dz],
+                                            ))
+                                }
+                                _ => false,
+                            };
+                            let show = !opaque_leaves
+                                && !culled_leaf
+                                && self
+                                    .visibility
+                                    .should_render_face(
+                                        BlockStateId(id),
+                                        BlockStateId(neighbor),
+                                        d,
+                                        true,
+                                    )
+                                    .unwrap_or(true);
+                            if show {
+                                visible_mask |= bit;
+                            }
+                        }
+                    }
+                    if visible_mask == 0 && !has_uncullable {
+                        continue;
+                    }
                     // ModelBlockRenderer: the first part decides smooth lighting
                     // for all; light-emitting blocks are always lit flat.
-                    let Some(first) = models.first() else {
+                    let Some(first) = catalog.model_by_slot(first_slot) else {
                         continue;
                     };
                     let ao = self.smooth_lighting && state.emission == 0 && first.ambient_occlusion;
@@ -1475,53 +1542,21 @@ impl Mesher<'_> {
                         ],
                         None => [x as f32, y as f32, z as f32],
                     };
-                    let mut visible = [false; 6];
-                    let interior_leaf = state.leaves
-                        && self.leaf_culling.is_interior()
-                        && scratch.leaf.interior(self.leaf_culling, x, y, z);
-                    for d in Direction::ALL {
-                        let [dx, dy, dz] = d.normal();
-                        let neighbor = pad.blocks[pi(x + dx, y + dy, z + dz)];
-                        // `should_render_face`'s first test, without its lookups: a
-                        // full occlusion face toward this block hides the face.
-                        if full_faces[neighbor as usize] >> d.opposite() as u8 & 1 != 0 {
+                    let connected = &self.render.connected;
+                    for &slot in &model_slots {
+                        let flags = cull_flags[slot as usize];
+                        if (flags.cull_mask() & visible_mask) == 0 && !flags.has_uncullable() {
                             continue;
                         }
-                        let other = &info[neighbor as usize];
-                        // LeavesBlock.skipRendering with opaque leaves.
-                        let opaque_leaves = !self.cutout_leaves && state.leaves && other.leaves;
-                        let culled_leaf = match self.leaf_culling {
-                            LeafCullingMode::Hollow | LeafCullingMode::Hidden => {
-                                state.leaves
-                                    && other.leaves
-                                    && leaf_culling::in_section(x + dx, y + dy, z + dz)
-                                    && (self.leaf_culling == LeafCullingMode::Hollow
-                                        || leaf_culling::backed(
-                                            pad,
-                                            info,
-                                            region,
-                                            base_y,
-                                            [x + 2 * dx, y + 2 * dy, z + 2 * dz],
-                                        ))
-                            }
-                            _ => false,
+                        let Some(model) = catalog.model_by_slot(slot) else {
+                            continue;
                         };
-                        visible[d as usize] = !opaque_leaves
-                            && !culled_leaf
-                            && self
-                                .visibility
-                                .should_render_face(
-                                    BlockStateId(id),
-                                    BlockStateId(neighbor),
-                                    d,
-                                    true,
-                                )
-                                .unwrap_or(true);
-                    }
-                    let connected = &self.render.connected;
-                    for model in &models {
                         for face in &model.faces {
-                            if face.quad.cull.is_some_and(|d| !visible[d as usize]) {
+                            if face
+                                .quad
+                                .cull
+                                .is_some_and(|d| visible_mask & (1u8 << (d as u8)) == 0)
+                            {
                                 continue;
                             }
                             // A pane's top and bottom strips between stacked panes, with

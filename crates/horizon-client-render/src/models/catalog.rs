@@ -23,6 +23,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::Path,
+    sync::OnceLock,
 };
 
 pub struct BakedFace {
@@ -44,6 +45,60 @@ pub struct BakedModel {
     pub faces: Vec<BakedFace>,
     pub cube: Option<[super::cube::CubeStyle; 6]>,
 }
+/// Compact 1-byte summary of a [`BakedModel`]'s face cull directions, so the
+/// mesher can skip neighbour checks and whole models without scanning faces.
+///
+/// Bit layout:
+/// - bits `0..6`: `cull_mask`, bit `d` set if any face has `quad.cull == Some(d)`
+/// - bit `6`: `has_uncullable`, set if any face has `quad.cull.is_none()`
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CullFlags(u8);
+impl CullFlags {
+    const CULL_MASK_BITS: u8 = 0b0011_1111;
+    const HAS_UNCULLABLE_BIT: u8 = 1 << 6;
+
+    /// Empty model flags (no culled faces and no uncullable faces).
+    pub const EMPTY: Self = Self(0);
+
+    /// Computes the cull flags for a slice of baked faces.
+    pub fn from_faces(faces: &[BakedFace]) -> Self {
+        let mut bits = 0u8;
+        for face in faces {
+            match face.quad.cull {
+                Some(d) => bits |= 1u8 << (d as u8),
+                None => bits |= Self::HAS_UNCULLABLE_BIT,
+            }
+        }
+        Self(bits)
+    }
+
+    /// Bitmask of `face.quad.cull` directions present (`1 << (d as u8)`).
+    #[inline]
+    pub const fn cull_mask(self) -> u8 {
+        self.0 & Self::CULL_MASK_BITS
+    }
+
+    /// Whether any face has `face.quad.cull.is_none()`.
+    #[inline]
+    pub const fn has_uncullable(self) -> bool {
+        self.0 & Self::HAS_UNCULLABLE_BIT != 0
+    }
+
+    /// Combines the cull flags of two models (e.g. multipart parts).
+    #[inline]
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+}
+const _: () = {
+    use horizon_core::geometry::Direction;
+    assert!((Direction::Down as u8) < 6);
+    assert!((Direction::Up as u8) < 6);
+    assert!((Direction::North as u8) < 6);
+    assert!((Direction::South as u8) < 6);
+    assert!((Direction::West as u8) < 6);
+    assert!((Direction::East as u8) < 6);
+};
 type VariantKey = (String, [u8; 3], bool);
 /// Empty by default: no state has a model (a dedicated server, which draws
 /// nothing).
@@ -59,6 +114,8 @@ pub struct StateModels {
     partials: BTreeMap<VariantKey, u32>,
     /// Standalone models by id: their index in `baked`.
     standalone: BTreeMap<String, u32>,
+    /// Precomputed cull flags per `baked` slot, invalidated before mutable model access.
+    cull_flags: OnceLock<Vec<CullFlags>>,
 }
 fn key(variant: &Variant) -> VariantKey {
     (variant.model.clone(), variant.rotations, variant.uv_lock)
@@ -392,6 +449,7 @@ impl StateModels {
             baked,
             partials,
             standalone: BTreeMap::new(),
+            cull_flags: OnceLock::new(),
         })
     }
     /// A kinetic part's model no blockstate names, baked at these quarter turns about x and y
@@ -432,6 +490,7 @@ impl StateModels {
                 Ok(model) => {
                     self.standalone
                         .insert(name.clone(), self.baked.len() as u32);
+                    self.cull_flags.take();
                     let variant = Variant {
                         model: name.clone(),
                         rotations: [0; 3],
@@ -446,9 +505,26 @@ impl StateModels {
     }
     /// Every baked model with the variant it was baked from, to change its faces.
     pub fn models_mut(&mut self) -> impl Iterator<Item = (&Variant, &mut BakedModel)> {
+        self.cull_flags.take();
         self.baked
             .iter_mut()
             .map(|(variant, model)| (&*variant, model))
+    }
+    /// A baked model by its slot in this catalog's `baked` store.
+    pub fn model_by_slot(&self, slot: u32) -> Option<&BakedModel> {
+        self.baked.get(slot as usize).map(|(_, model)| model)
+    }
+    /// Precomputed cull flags for every slot in this catalog's baked store,
+    /// lazily built and invalidated before mutable access via [`Self::models_mut`].
+    pub fn cull_flags(&self) -> &[CullFlags] {
+        self.cull_flags
+            .get_or_init(|| {
+                self.baked
+                    .iter()
+                    .map(|(_, model)| CullFlags::from_faces(&model.faces))
+                    .collect()
+            })
+            .as_slice()
     }
     /// A model baked by [`Self::bake_standalone`], by id (`mymod:block/shaft_half`).
     pub fn standalone(&self, name: &str) -> Option<&BakedModel> {
@@ -492,18 +568,38 @@ impl StateModels {
         out.clear();
         self.each_seeded(state, position_seed(position), |(_, model)| out.push(model))
     }
+    /// Like [`Self::models_at`], writing baked-model slot indices into a stack-backed
+    /// `SmallVec` so single-variant and small multipart blocks avoid heap allocation
+    /// and can inspect [`Self::cull_flags`] before reading [`BakedModel`] geometry.
+    pub fn model_slots_at_small<A: smallvec::Array<Item = u32>>(
+        &self,
+        state: BlockStateId,
+        position: BlockPos,
+        out: &mut smallvec::SmallVec<A>,
+    ) -> Result<()> {
+        out.clear();
+        self.each_slot_seeded(state, position_seed(position), |model| out.push(model))
+    }
+    fn each_slot_seeded(
+        &self,
+        state: BlockStateId,
+        seed: i64,
+        mut f: impl FnMut(u32),
+    ) -> Result<()> {
+        let (choice, selected) = self.state(state).ok_or("unbound gallery block state")?;
+        let mut random = LegacyRandom::new(seed);
+        self.choices[*choice].for_each(selected, &mut random, |&model| {
+            f(model);
+        })?;
+        Ok(())
+    }
     fn each_seeded<'a>(
         &'a self,
         state: BlockStateId,
         seed: i64,
         mut f: impl FnMut(&'a (Variant, BakedModel)),
     ) -> Result<()> {
-        let (choice, selected) = self.state(state).ok_or("unbound gallery block state")?;
-        let mut random = LegacyRandom::new(seed);
-        self.choices[*choice].for_each(selected, &mut random, |&model| {
-            f(&self.baked[model as usize]);
-        })?;
-        Ok(())
+        self.each_slot_seeded(state, seed, |model| f(&self.baked[model as usize]))
     }
     fn state(&self, state: BlockStateId) -> Option<&(usize, SelectedModels)> {
         self.states.get(state.0 as usize)?.as_ref()
