@@ -302,6 +302,16 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `a03f108dbc` | ui | a long chat message adds only the lines that stay | needs `Line.message`/`GuiMessage::message_text`, absent here |
 | `f43817376a` | -13..-25 MB | bucketed `Uploads` staging ring | 200-line rewrite of `gfx/upload.rs`, deferred |
 | `3fa98d1bd8`, `f71ddcce2d`, `533bb2cdd3`, `ad406095d4`, `dedb0375a4` | font/noise/particles/sprites | large multi-region rewrites | diverge from this tree's older forms, deferred |
+| `e0c1233a27` | -22..-33 MB | zero-alloc `EntityBatch` LUT + Schwartzian sort | needs the 16-material/native-terrain overlay refactor; this tree's `entity_batch.rs` is the older 10-material, 400-line form |
+| `d939fd378d` | +2.5..3.3% RD | faster `ChunkMap` lookups | needs the toroidal-grid/hash refactor in `world.rs`/`chunk_map.rs`, absent here |
+| `8e0b8ff5a5` | +1.1..4.3% RD16 | cache lighting in the far shader | modifies `gfx/animate.rs`, absent here |
+| `cb2132352e`, `0c2cff4f46` | +FPS / +SoA | `ColumnSlab`, SoA `Resident`/pages | large rewrites of `gfx/occlusion.rs`, `gfx/pages.rs`, `gfx/resident.rs` against this tree's older forms |
+| `0f0dea6114`, `96d758bf25` | +1.4..2.0% RD / mesh lock | streaming mesh-job pooling | needs `mesh_settings()`/`submit_mesh_candidates` and `hz_laps` instrumentation, absent here |
+| `e08d2e53a5` | OIT passes | coalesce OIT terrain/feature passes | needs `pixel_count`/`FeatureCounts`/`counted`, absent here |
+| `fba8c0452c` | HUD | keep the HUD vertex buffer, clip quads in place | `clip_since` rewrite plus a heavily diverged `game.rs` |
+| `635586ce1b` | worldgen carve | lazy carving top-material worker | needs `apply_carving_mask_shared`/`has_eager_density_bindings`, absent here |
+| `a8e58dcedf` | -15.1% decorate | stand-in chunk pooling, ore/placement scratch | needs the `ImposterProtoChunk`/`is_full_chunk` stand-in refactor and `TargetMemo`/`SphereSquares`, absent here |
+| `746f280e8e` | world/lan | fast non-full block overlap check | needs `VoxelShape::same_identity` and the shape-based scan, absent here |
 
 Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`, `5db9bc3f45`,
 `d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
