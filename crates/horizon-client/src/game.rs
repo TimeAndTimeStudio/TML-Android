@@ -20943,7 +20943,6 @@ fn loading_frame(hud: &HudBatch) -> Frame<'_> {
         hand: &[],
         hand_fov_degrees: 70.0,
         screen: &[],
-        pack: Default::default(),
         border: None,
         game_time: 0.0,
         shader_game_time: 0.0,
