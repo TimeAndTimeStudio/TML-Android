@@ -179,7 +179,6 @@ mod oit;
 mod oit_features;
 pub mod pack_draw;
 pub(crate) mod pack_timing;
-pub mod pack_uniforms;
 mod page_runs;
 pub mod panorama;
 mod readback;
@@ -728,8 +727,6 @@ pub struct Frame<'a> {
     pub hand_fov_degrees: f32,
     /// Full-screen camera effects drawn over the world and hand, under the HUD.
     pub screen: &'a [crate::screen_effects::ScreenQuad],
-    /// What a shader pack's uniforms need from the game.
-    pub pack: pack_uniforms::PackInputs,
     /// The world border wall, when near enough to be drawn.
     pub border: Option<BorderDraw>,
     pub game_time: f32,
@@ -7576,6 +7573,7 @@ impl Renderer {
         let pack_draws_terrain = false;
         let pack_draws_shadow = false;
         let pack_draws_sky = false;
+        let pack_draws_celestial = false;
         let pack_draws_water = false;
         let pack_draws_clouds = false;
         let pack_draws_hand = false;
@@ -8591,7 +8589,7 @@ impl Renderer {
             // terrain and clouds, so the water behind the rain is drawn first.
             pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             if !pack_draws_weather && !oit_on {
-                self.weather.draw(&mut pass, &self.entity_group, None);
+                self.weather.draw(&mut pass, &self.entity_group);
                 pass.set_bind_group(0, &self.group, &[]);
             }
             // LevelRenderer: the world border after translucent terrain and weather.

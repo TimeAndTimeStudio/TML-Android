@@ -146,22 +146,11 @@ impl Weather {
     }
     /// Draws the streaks, through a native pack's weather stage when `native` is given (its
     /// pipeline and the pack's frame group).
-    pub fn draw(
-        &self,
-        pass: &mut wgpu::RenderPass<'_>,
-        entities: &wgpu::BindGroup,
-        native: Option<(&wgpu::RenderPipeline, &wgpu::BindGroup)>,
-    ) {
+    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>, entities: &wgpu::BindGroup) {
         if self.count == 0 {
             return;
         }
-        match native {
-            Some((pipeline, frame)) => {
-                pass.set_pipeline(pipeline);
-                pass.set_bind_group(horizon_shader_api::stages::GROUP, frame, &[]);
-            }
-            None => pass.set_pipeline(&self.pipeline),
-        }
+        pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, entities, &[]);
         pass.set_bind_group(1, &self.group, &[]);
         pass.set_vertex_buffer(0, self.vertices.slice(..));
@@ -182,74 +171,9 @@ fn depth_stencil() -> wgpu::DepthStencilState {
     }
 }
 
-/// The entries around a native pack's `weather`: Horizon's weather vertex, then the texture
-/// as `fs_weather` reads it, handed to the pack with the light and the position.
-const NATIVE_ENTRIES: &str = "
-struct HorizonWeatherOut {
-    @builtin(position) clip: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-    @location(1) color: vec4<f32>,
-    @location(2) @interpolate(flat) rect: vec4<f32>,
-    @location(3) light: vec2<f32>,
-    @location(4) position: vec3<f32>,
-    @location(5) @interpolate(flat) snow: u32,
-}
-@vertex fn horizon_weather_vs(@location(0) position: vec3<f32>, @location(1) uv: vec2<f32>,
-    @location(2) rect: vec4<f32>, @location(3) animation: vec4<f32>,
-    @location(4) bases: vec4<u32>, @location(5) color: vec4<f32>,
-    @location(6) light: vec4<u32>, @location(7) snow: u32) -> HorizonWeatherOut {
-    let phase = horizon_entity_weather_phase(animation, bases, snow,
-        horizon_entity_weather_time.values);
-    let v = horizon_entity_entity_vertex(position, uv + phase, 0u, color, light, vec4(0.0));
-    var out: HorizonWeatherOut;
-    out.clip = v.clip;
-    out.uv = v.uv;
-    out.color = v.color;
-    out.rect = rect;
-    // entity_vertex's light: block in y, sky in x, 0..240.
-    out.light = min(vec2(f32(light.y), f32(light.x)) / 240.0, vec2(1.0));
-    out.position = position;
-    out.snow = snow;
-    return out;
-}
-@fragment fn horizon_weather_fs(in: HorizonWeatherOut) -> @location(0) vec4<f32> {
-    let texel = horizon_entity_weather_texel(in.uv, in.rect,
-        textureDimensions(horizon_entity_atlas));
-    let color = textureLoad(horizon_entity_atlas, texel, 0) * in.color;
-    if color.a < 0.1 { discard; }
-    return weather(WeatherInput(color, in.light, in.position, in.snow != 0u));
-}
-";
-
-/// The shader of a native pack's weather stage `source`.
-fn native_source(source: &str) -> String {
-    format!(
-        "{source}\n// Horizon's weather (entity.wgsl)\n{}{NATIVE_ENTRIES}",
-        super::wgsl_prefix::prefixed(&super::entity_shader(), "horizon_entity_")
-    )
-}
-
 
 #[cfg(test)]
 mod tests {
-    use super::native_source;
-
-    #[test]
-    fn a_native_weather_stage_validates() {
-        use horizon_shader_api::stages::StageKind;
-        let source = StageKind::Weather.prelude()
-            + "fn weather(input: WeatherInput) -> vec4<f32> {\n    \
-               return input.color * vec4(input.light, input.position.x, f32(input.snow));\n}\n";
-        let text = native_source(&source);
-        let module = naga::front::wgsl::parse_str(&text)
-            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(&text)));
-        naga::valid::Validator::new(
-            naga::valid::ValidationFlags::all(),
-            naga::valid::Capabilities::all(),
-        )
-        .validate(&module)
-        .unwrap_or_else(|e| panic!("{}", e.emit_to_string(&text)));
-    }
     use crate::weather::{Parameters, Time};
     use wgpu::util::DeviceExt;
 
