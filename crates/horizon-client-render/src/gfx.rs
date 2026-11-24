@@ -7021,7 +7021,7 @@ impl Renderer {
             );
             // The test runs through indirect multi-draws, or for a pack that asked for it
             // (`HORIZON_PACK_CULL=1`, skipping sections between frames).
-            let testing = self.cull_on && (self.multi_draw || self.pack_cull);
+            let testing = self.cull_on && (self.multi_draw || false);
             match self.cull.as_ref().filter(|_| testing).map(|cull| cull.hidden) {
                 // What the last test hid: the boxes it saw and did not, and the share of solid
                 // indices those boxes kept out of the passes.
