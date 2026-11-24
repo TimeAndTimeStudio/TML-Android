@@ -249,18 +249,22 @@ self-contained performance change that applied to this tree:
 ### Upstream performance work still to port (highest first)
 
 Measured gains are upstream's own benchmark numbers; each needs adapting to this tree.
+Every one left below is **blocked by an upstream refactor this tree does not have yet**: the
+Nov 2 base predates the Nov 23-24 reorganisation, and `git apply`/hand-merge cannot bridge the
+gap without porting the intermediate commit first. The prerequisite is named for each.
 
-| Commit | Gain | What |
-| --- | --- | --- |
-| `eee912b040` | +4.3..8.4% RD16 | spatial front-to-back meshlet clustering in the mesher |
-| `ba54be7849` (rest) | +7.6..8.9% RD16 | `glyph_scratch`, inline `DrawnKey` for the HUD |
-| `d41da14ca2` | +2.6..7.9% RD16 | `terrain.wgsl` RGSS/vertex ALU, single-gradient solid finish |
-| `e549bffef3` | +3.6..8.9% RD16 | reverse-Z sky pass after solid terrain |
-| `432d764acb` | +22.6..37.7% stress BE | single-pass block-entity prep, pre-baked shulkers |
-| `9ba83fa92f` | +144% stress items | static item-model resolution cache, zero-alloc item prep |
-| `5cbec47ee2` | +4.2% stress mobs | per-frame entity/mob/item render-prep allocations |
-| `cbac118119` | 92x | `PendingUploads` priority queue, batched `Job::Free` |
-| `8c27fbd2a0` | +2.0..3.8% RD32 | O(1) calm-frame LOD uploads, COW dispatch snapshots |
-| `e8618f82ba` | +6.0..10.0% | `ChunkMap` toroidal cache kept hot |
-| `d8f558197d` | +8.7..11.6% RD32 | conservative reversed-Z Hi-Z pyramid occlusion culling |
-| `5db9bc3f45` | +3.6% stress items | inline single-box `VoxelShape`, O(1) collide fast path |
+| Commit | Gain | What | Blocked by |
+| --- | --- | --- | --- |
+| `ba54be7849` | +7.6..8.9% RD16 | `glyph_scratch`, inline `DrawnKey` for the HUD | needs the `GuiScale`/`window::GuiSize` scale refactor, `HudBatch::new(window, GuiScale)`, `HudBatch::scratch`, the `pictures` field, `glint_colour`/`pvp_glint_texel`, `inline_profiles: Vec<Arc<Value>>`, `GuiDraw::FillGradient` and `hud_layout_gradient_tests.rs` — all later upstream commits |
+| `eee912b040` | +4.3..8.4% RD16 | spatial front-to-back meshlet clustering in the mesher | modifies `mesher/meshlet.rs`, absent here (mesher is the older 2-file form) |
+| `e549bffef3` | +3.6..8.9% RD16 | reverse-Z sky pass after solid terrain | modifies `gfx/celestial.rs`, absent here |
+| `432d764acb` | +22.6..37.7% stress BE | single-pass block-entity prep, pre-baked shulkers | modifies `game/blocks/banners.rs`, `game/blocks/block_entity_anims.rs`, `game/entities/minecarts.rs` — this tree keeps `game.rs` monolithic |
+| `9ba83fa92f` | +144% stress items | static item-model resolution cache, zero-alloc item prep | needs the `BakedEntry`/`LayerContent`/`prepare_parts` item-render refactor, absent here |
+| `5cbec47ee2` | +4.2% stress mobs | per-frame entity/mob/item render-prep allocations | modifies 10 `game/entities/*` and `game/interface/*` files this tree does not have |
+| `cbac118119` | 92x | `PendingUploads` priority queue, batched `Job::Free` | the queue lives in `horizon-client-gameplay/`, a crate that does not exist here; the integration sites are `game/interface/*` and `game/world/world_update.rs` |
+| `8c27fbd2a0` | +2.0..3.8% RD32 | O(1) calm-frame LOD uploads, COW dispatch snapshots | modifies `gfx/world_handover.rs`, absent here; 1405 lines against a diverged `lod.rs`/`mesher.rs` |
+| `e8618f82ba` | +6.0..10.0% | `ChunkMap` toroidal cache kept hot | the toroidal grid came from an earlier absent commit; `chunk_map.rs` here is 385 lines against 1165 pre-image |
+| `d8f558197d` | +8.7..11.6% RD32 | conservative reversed-Z Hi-Z pyramid occlusion culling | adds `gfx/gpu_culling.rs` and `gfx/gpu_occlusion.wgsl`, absent here |
+
+Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`, `5db9bc3f45`,
+`d41da14ca2`, `1fd5f925a8`.
