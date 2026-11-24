@@ -245,6 +245,28 @@ self-contained performance change that applied to this tree:
 - `1fd5f925a8` — precomputed `BakedModel` `CullFlags` (`catalog::CullFlags`) and stack-backed
   `model_slots_at_small`; the mesher tests only the cull directions the parts use and skips a
   block with nothing visible and no uncullable face. (Its `AoInfo` half was already ported.)
+- `55aa15efeb` — `SamplerContext` recycles its cached and slice-plane `Vec` buffers across `reset`.
+  (The upstream test additions need the later `set_lattice`/`with_identity`/`sample_needed`
+  sampler refactor; they are left out.)
+- `6dbd04fc1a` — `sweep_intersected_blocks` keeps visited positions in a stack array (24 slots),
+  spilling to `FxHashSet` on long sweeps.
+- `64baac04dd` — step-up candidate heights collect into a stack array (8 slots), heap past it.
+- `3c678f8923` — `Beardifier::sample_volume` scatters per piece inside provably-safe bounds
+  (bit-identical sums), falling back to the full scan otherwise.
+- `8060e1ff24` — a far tile requested by several players is sampled once and shared (`lod_net/cache.rs`).
+- `b6562f83a8` — `PalettedContainer::get_run` fills 16-cell 4-bit and non-straddling 2-cell runs
+  from one word each.
+- `bc6bc483a8` — wide JSON objects index their keys with an `IndexMap` (order-preserving, O(1)).
+  (The upstream test additions need `parse_prefix_strict`, absent here.)
+- `7cc881c0e3` — `try_resolve_step_movement_into` reuses one shape vector across the two step
+  queries; `world_movement` keeps a thread-local `Vec<Collider>` for it. Adapted to this tree's
+  `Collides`-generic movement (upstream uses `Borrow<VoxelShape>`).
+- `19c9350647` — Arabic shaping consumes a run of following marks in one linear pass.
+  (The upstream origin-preservation test needs `Span::origin`/`Text::untrusted`, absent here.)
+
+Already present in this tree (verified by their code being in `HEAD`): `ab44288662` (cloud
+`CloudMask` rebuild) and most of `e349aeccea` (packed light BFS; only upstream's later
+`Light::from_slice` form is absent, this tree keeps `Light::packed`).
 
 ### Upstream performance work still to port (highest first)
 
@@ -265,6 +287,20 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `8c27fbd2a0` | +2.0..3.8% RD32 | O(1) calm-frame LOD uploads, COW dispatch snapshots | modifies `gfx/world_handover.rs`, absent here; 1405 lines against a diverged `lod.rs`/`mesher.rs` |
 | `e8618f82ba` | +6.0..10.0% | `ChunkMap` toroidal cache kept hot | the toroidal grid came from an earlier absent commit; `chunk_map.rs` here is 385 lines against 1165 pre-image |
 | `d8f558197d` | +8.7..11.6% RD32 | conservative reversed-Z Hi-Z pyramid occlusion culling | adds `gfx/gpu_culling.rs` and `gfx/gpu_occlusion.wgsl`, absent here |
+| `12cd1ed563` | density | `IntervalSelectSampler` duplicate threshold scans | needs `sample_with`/`Values`/`needed` sampler refactor, absent here |
+| `51670062e1` | 1.61x scalar | flat `SplineSampler` arena | needs `sample_with`/`usable_mask`, absent here |
+| `15824fc6f3` | worldgen | structure grid range check | needs `Placement::DimensionOrigin`/`StructureRegistry::origin`, absent here |
+| `46e0a6942e` | memory | share one structure-mob data read per world | `StructureMobFinalizer` here has no `item_data` field (later upstream refactor) |
+| `ebb6ee7a8a` | server | share encoded chunk bodies | needs `Body::Shared`/`Encoder::bodies_with`, absent here |
+| `9609bc8ccf` | command | borrow unquoted selector option keys | needs mod `selector_tokens` (the mod system is removed in this fork) |
+| `a03f108dbc` | ui | a long chat message adds only the lines that stay | needs `Line.message`/`GuiMessage::message_text`, absent here |
+| `f43817376a` | -13..-25 MB | bucketed `Uploads` staging ring | 200-line rewrite of `gfx/upload.rs`, deferred |
+| `3fa98d1bd8`, `f71ddcce2d`, `533bb2cdd3`, `ad406095d4`, `dedb0375a4` | font/noise/particles/sprites | large multi-region rewrites | diverge from this tree's older forms, deferred |
 
 Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`, `5db9bc3f45`,
-`d41da14ca2`, `1fd5f925a8`.
+`d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
+`b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`.
+
+The remaining upstream perf commits from the Nov 20-24 window are ~130; the ones not in this
+table all modify files this tree never had (the Nov 23-24 gameplay/render reorganisation), so
+they cannot be hand-applied without first porting that reorganisation.
