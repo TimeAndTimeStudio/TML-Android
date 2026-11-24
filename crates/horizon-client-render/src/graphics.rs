@@ -715,21 +715,11 @@ pub fn light_shader_pack(name: &str) -> bool {
 }
 
 impl Graphics {
-    /// The shader pack and profile chosen: `HORIZON_SHADER_PACK`'s, for development, else the
-    /// Shader Packs page's.
+    /// No shader pack, ever: TML ships without the shader-pack system, so the game's own
+    /// pipeline is the only one that draws. The saved `shader_pack`/`shader_profile` (and
+    /// `HORIZON_SHADER_PACK`) are kept only so old saves parse; they select nothing.
     pub fn shader_choice(&self) -> Option<(String, String)> {
-        let env = |key: &str| std::env::var(key).ok().filter(|v| !v.is_empty());
-        let pack = env("HORIZON_SHADER_PACK")
-            .or_else(|| Some(self.shader_pack.clone()).filter(|p| !p.is_empty()))?;
-        let profile = match self.shader_profile.as_str() {
-            // Empty is the pack's own defaults, on every device. There is no profile the game
-            // picks for the player: the player is in charge of the picture.
-            "" => env("HORIZON_SHADER_PROFILE").unwrap_or_default(),
-            // Saves from versions with an Auto profile read as the pack's own defaults.
-            "default" | "auto" => String::new(),
-            profile => profile.to_owned(),
-        };
-        Some((pack, profile))
+        None
     }
 }
 impl Default for Graphics {

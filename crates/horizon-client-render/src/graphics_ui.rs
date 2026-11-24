@@ -27,11 +27,10 @@ pub enum Page {
     Advanced,
 }
 impl Page {
-    pub const ALL: [Page; 5] = [
+    pub const ALL: [Page; 4] = [
         Page::General,
         Page::Quality,
         Page::Performance,
-        Page::Shaders,
         Page::Advanced,
     ];
     pub fn name(self) -> &'static str {
@@ -437,66 +436,6 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
                         None,
                         "60 FPS cap (30 in menus or unfocused), half the workers: less power.",
                     )],
-                ),
-            ],
-        ),
-        (
-            Page::Shaders,
-            vec![
-                (
-                    "Shader packs",
-                    vec![
-                        h(
-                            H::ShaderPackOff,
-                            High,
-                            "Turn off shaders and use vanilla graphics.",
-                        ),
-                        h(
-                            H::ShaderPackTml,
-                            High,
-                            "Bundled phone-first shaders: light sky and shadows, water and bloom at a steady frame rate.",
-                        ),
-                        h(
-                            H::ShaderPackCustom0,
-                            High,
-                            "Use custom shader pack from shaderpacks folder.",
-                        ),
-                        h(
-                            H::ShaderPackCustom1,
-                            High,
-                            "Use custom shader pack from shaderpacks folder.",
-                        ),
-                        h(
-                            H::ShaderPackCustom2,
-                            High,
-                            "Use custom shader pack from shaderpacks folder.",
-                        ),
-                        h(
-                            H::ShaderPackCustom3,
-                            High,
-                            "Use custom shader pack from shaderpacks folder.",
-                        ),
-                        h(
-                            H::ShaderOptions,
-                            Medium,
-                            "Detailed shader pack options (Lighting, Sky, Colors, Materials, Water, etc.).",
-                        ),
-                        h(
-                            H::ShaderFolder,
-                            None,
-                            "Opens the shaderpacks folder in the file manager.",
-                        ),
-                    ],
-                ),
-                (
-                    "Settings",
-                    vec![
-                        h(
-                            H::ShadowCache,
-                            Saves,
-                            "Reuses the pack shadow map when sun, view and world match. Saves up to 50% GPU load on mobile.",
-                        ),
-                    ],
                 ),
             ],
         ),

@@ -160,9 +160,8 @@ def zip_folder(folder, archive):
 
 def assets(out):
     """The APK's assets/: prepare-kit.zip (PREPARE_KIT, with the paths horizon-prepare reads),
-    lowbudget.zip, the skin the setup draws the menus with (packaging/lowbudget/pack, made by its
-    make.py), and TMLVisualsLite.zip, the shader pack the app puts in shaderpacks/ (also left
-    in `out` for the release page)."""
+    lowbudget.zip, and the skin the setup draws the menus with (packaging/lowbudget/pack, made
+    by its make.py)."""
     run(sys.executable, ROOT / "tools/build_android_exporters.py")
     folder = out / "assets"
     shutil.rmtree(folder, ignore_errors=True)
@@ -182,8 +181,6 @@ def assets(out):
         for name in ["manifest.json", *sorted(manifest["classes"])]:
             kit.write(bundle / name, "exporters/" + name)
     zip_folder(HERE.parent / "lowbudget" / "pack", folder / "lowbudget.zip")
-    zip_folder(HERE.parent / "shaderpacks" / "tml-visuals-lite", folder / "TMLVisualsLite.zip")
-    shutil.copyfile(folder / "TMLVisualsLite.zip", out / "TMLVisualsLite.zip")
     rp_dir = HERE.parent / "resourcepacks"
     if rp_dir.exists():
         for rp in rp_dir.glob("*.zip"):

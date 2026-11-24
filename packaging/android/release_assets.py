@@ -3,15 +3,14 @@
 import argparse
 from pathlib import Path
 
-from build_apk import ROOT, TARGETS, zip_folder
+from build_apk import ROOT, TARGETS
 
 
-def prepare(folder, version, lite):
+def prepare(folder, version):
     version = version.removeprefix("v")
-    missing = [abi for abi in TARGETS if not (folder / f"starling-{version}-{abi}.apk").is_file()]
+    missing = [abi for abi in TARGETS if not (folder / f"tml-{version}-{abi}.apk").is_file()]
     if missing:
         raise ValueError("Missing release APKs: " + ", ".join(missing))
-    zip_folder(lite, folder / "TMLVisualsLite.zip")
 
 
 if __name__ == "__main__":
@@ -20,10 +19,6 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, default=ROOT / "target/android")
     args = parser.parse_args()
     try:
-        prepare(
-            args.output,
-            args.version,
-            ROOT / "packaging/shaderpacks/tml-visuals-lite",
-        )
+        prepare(args.output, args.version)
     except ValueError as error:
         parser.exit(1, str(error) + "\n")

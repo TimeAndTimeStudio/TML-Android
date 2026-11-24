@@ -282,27 +282,24 @@ pub fn skin() -> Option<PathBuf> {
     }
 }
 
-/// TML Visuals Lite, the shader pack the app carries, put in `shaderpacks/` of the game
-/// folder. It is never picked for the player: a new install starts with shaders Off, and the
-/// pack is there in the list when the player wants it.
+/// Clears a shader pack a save still names: TML ships no shader packs.
 pub fn put_shader_pack(game_folder: &Path) {
-    let _ = put_asset_pack(game_folder, "TMLVisualsLite.zip", ".tml-visuals-lite");
-    // A save that still names the removed full pack starts with shaders Off instead: the
-    // player is not quietly moved to another look they did not choose.
+    // TML has no shader packs: nothing is put in `shaderpacks/`, and a save that still names
+    // one starts with shaders Off instead of being quietly moved to another look.
     let graphics_file = game_folder.join("horizon-graphics.txt");
     let Ok(content) = std::fs::read_to_string(&graphics_file) else {
         return;
     };
     if !content
         .lines()
-        .any(|line| line.trim() == "pickedShaderPack:TMLVisuals.zip")
+        .any(|line| line.trim_start().starts_with("pickedShaderPack:"))
     {
         return;
     }
     let lines: Vec<String> = content
         .lines()
         .map(|line| {
-            if line.trim() == "pickedShaderPack:TMLVisuals.zip" {
+            if line.trim_start().starts_with("pickedShaderPack:") {
                 "pickedShaderPack:".to_string()
             } else {
                 line.to_string()
@@ -314,34 +311,6 @@ pub fn put_shader_pack(game_folder: &Path) {
             "TML: the removed shader pack could not be cleared in {}: {e}",
             graphics_file.display()
         );
-    }
-}
-
-/// One bundled shader pack: `asset` from the APK's assets, written as `name` in
-/// `shaderpacks/` when it changed. Returns whether it is there.
-fn put_asset_pack(game_folder: &Path, name: &str, marker_name: &str) -> bool {
-    let Some(bytes) = crate::platform::asset(name) else {
-        return false;
-    };
-    let dir = game_folder.join("shaderpacks");
-    let target = dir.join(name);
-    let stamp = format!("{}-{:08x}", bytes.len(), crc32(&bytes));
-    let marker = crate::logging::private_home().join(marker_name);
-    if target.exists() && std::fs::read_to_string(&marker).ok().as_deref() == Some(&stamp) {
-        return true;
-    }
-    match std::fs::create_dir_all(&dir)
-        .and_then(|()| std::fs::write(&target, &bytes))
-        .and_then(|()| std::fs::write(&marker, &stamp))
-    {
-        Ok(()) => {
-            log::info!("TML: {name} put in {}", dir.display());
-            true
-        }
-        Err(e) => {
-            log::warn!("TML: {name} could not be put in {}: {e}", dir.display());
-            false
-        }
     }
 }
 
