@@ -8541,6 +8541,8 @@ impl Renderer {
                 pass.set_bind_group(0, &self.group, &[]);
                 pass
             };
+            // No pack draws into a surface target of its own (TML has no shader packs).
+            let surface: Option<wgpu::TextureView> = None;
             if let Some(surface) = &surface {
                 drop(pass);
                 pass = terrain_pass(&mut encoder, surface, true);
@@ -8621,6 +8623,8 @@ impl Renderer {
                     // cutout one (terrain.wgsl's `opaque_quad`), each over phase 1's
                     // lists with quads for it, and over all of phase 2's.
                     let (opaque, cutout) = (opaque_end as u32, cutout_start as u32);
+                    // No native material stage: the game's own pipelines draw the terrain.
+                    let material: Option<()> = None;
                     let passes: &[(&wgpu::RenderPipeline, std::ops::Range<u32>)] = match material {
                         None if split_solid => &[
                             (
