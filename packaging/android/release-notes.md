@@ -14,16 +14,15 @@ Horizon Android and Starling are now one app, in [starling-client/starling](http
 - **Horizon Android's controls:** the touch controls, their MCPE and GoyControl layouts and the layout editor now come from Horizon Android: open **H > Controls > Customize Controls**, or **Options > Controls > Customize Layout**, for presets, undo and button sizes. **Options > Controls** picks Auto, Touch, Keyboard & Mouse or Controller. Starling's chat shortcuts and inventory gestures stay.
 - **Accounts:** the account button on the title screen keeps Microsoft, Ely.by and offline profiles, and switches between them. The one you pick is the one you play worlds and servers with, and it stays picked after a restart. Ely.by takes your password and, if you use it, a 2FA code. The setup on the first start offers Ely.by and named offline profiles too.
 - **Skins for each profile:** Skin Customization keeps a skin for each profile. A Microsoft account can send its skin to its Minecraft profile, so others see it on servers, and an Ely.by account wears its Ely.by skin, with a button to change it on ely.by.
-- **A catalog inside the game:** the **Catalog** button on the Mods, Resource Packs and Shader Packs pages finds, installs and removes them. Java shader packs like Complementary, BSL and Photon install with a tap and run as they are.
+- **A catalog inside the game:** the **Catalog** button on the Mods and Resource Packs pages finds, installs and removes them.
 - **Your game folder in the Files app:** Starling shows up in Android's Files app and file pickers, to browse, copy, rename and delete.
 - **More phones:** 32-bit ARM phones and x86 devices get their own APK, and older GPUs get a game built to run on them.
 - **Faster terrain on Adreno**, and a lighter upscale on Mali and PowerVR when the resolution is below 100%.
 - **Diagnostics:** **Options > Diagnostics** shows what happened when something goes wrong, and Starling offers a way back if it can't start.
 - **Credits:** **Options > Credits & Attribution** names Starling's founders and the game it is built on.
 
-### Mods and shader packs
+### Mods
 
-- **More shader packs work:** packs written for the core profile, like Pixel Perfect, no longer leave a black screen, and packs with only world programs, like Round World, load.
 - **Many more native mods compile**, like Treefall, Eating Animation, Carry Block, Biome Compass and Dynamic FPS.
 - **Use GitHub (slower)** on the Compile card compiles your native mods on GitHub's machines, for when the build server has reached its limit for the day.
 - **More builds a day:** 32 instead of 16.
@@ -60,9 +59,6 @@ Horizon Android and Starling are now one app, in [starling-client/starling](http
 
 ## New in 0.2.1
 
-- **Shader packs run on Mali phones again.** On phones with a Mali GPU every pack stayed vanilla since 0.2.0.
-- A pack that can't run on your phone now says so in the chat and turns off.
-
 ## New in 0.2.0, the biggest update yet
 
 ### Mods: `.hmod` and `.hnmod`
@@ -82,14 +78,6 @@ The old Starling mods (Far View, FPS Overlay, Keystrokes, Minimap, Recipes, Zoom
 - A double tap on a stack moves it straight to the other side, as Shift-click does.
 - The held F3 button also has the other F keys, and the F3 text is bigger: it follows the GUI scale.
 - The three-finger Stats tap is off unless you turn it on (**3-tap** in the touch editor).
-
-### Shader packs
-
-- **Auto profile:** fits a pack to the phone by what its profiles ask of it, and draws terrain's depth first.
-- **Shader Options** for a finger, and **Resolution** and **FPS Limit** on the Shader Packs page.
-- Water and terrain came back in Photon, Sildur's and Bliss, and superDuperVanilla lost its overlay.
-- Packs' own textures load, a block's cracks show, faces are no longer shaded twice, and the sky reaches the horizon.
-- A pack that loses the graphics device is turned off instead of closing the game.
 
 ### Newest Horizon
 
