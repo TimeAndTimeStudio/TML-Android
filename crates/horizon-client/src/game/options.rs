@@ -569,8 +569,11 @@ impl Game<'_> {
         let scale = self.world_scale();
         // The in-game HUD only shows the resolution now: the one place it changes is
         // Video Settings > Quality, so keep the displayed share in step with that value.
-        self.mobile.controls.settings.resolution_scale_percent =
-            self.settings.horizon.resolution_scale.clamp(25, 100);
+        #[cfg(target_os = "android")]
+        {
+            self.mobile.controls.settings.resolution_scale_percent =
+                self.settings.horizon.resolution_scale.clamp(25, 100);
+        }
         if horizon_client_render::mipmap::set_dither_cutouts(
             self.settings.horizon.dither_cutout_mips,
         ) {
