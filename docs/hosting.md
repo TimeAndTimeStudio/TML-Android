@@ -306,7 +306,9 @@ far past the view distance, which helps players find the seed. A player's own LO
 shorter. Each player may have 8 tiles waiting and ask for 64 a second on average, and one background thread
 samples them for everyone in turn, behind the ticks, so far terrain never slows the server down; a tile past the
 distance or over a player's limits is refused, and a client that keeps breaking the limits is disconnected.
-Tiles are sampled again for each player who asks (there is no cache yet). Vanilla clients never hear of it.
+A tile is the same for every player in its level, so the server keeps the tiles it sampled in memory (up to
+32 MiB, about 4,000 tiles; the least recently asked for go first) and answers the next player who asks for one
+with it: players looking at the same land cost one sample. Vanilla clients never hear of it.
 
 `horizon-server report` records the running server for 60 seconds (`report 300` for five minutes, up to 600),
 then prints a short summary and saves it in `reports/`: `perf-<time>.txt` and `perf-<time>.json`. They say where
