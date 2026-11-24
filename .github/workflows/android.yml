@@ -1,0 +1,93 @@
+name: android
+
+on:
+  push:
+    branches: [main, master, android, starling]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { abi: arm64-v8a, target: aarch64-linux-android }
+    runs-on: ubuntu-latest
+    env:
+      CARGO_BUILD_JOBS: 4
+      CARGO_TERM_COLOR: always
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run sccache-action
+        uses: mozilla-actions/sccache-action@v0.0.8
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Install build-tools and NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "build-tools;35.0.0" "platforms;android-36" "ndk;28.2.13676358" > /dev/null
+      - name: Install Rust and cargo-ndk
+        run: |
+          rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+          rustup default stable
+          cargo install cargo-ndk --version 3.5.4 --locked
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: android-${{ matrix.abi }}
+      - name: Build TML APK (ARM64 Only)
+        run: |
+          python3 packaging/android/build_apk.py --abi ${{ matrix.abi }} --profile quick
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tml-apk-${{ matrix.abi }}
+          path: target/android/tml-*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    needs: apk
+    runs-on: ubuntu-latest
+    env:
+      CARGO_BUILD_JOBS: 4
+      CARGO_TERM_COLOR: always
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run sccache-action
+        uses: mozilla-actions/sccache-action@v0.0.8
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tml-apk-*
+          path: target/android
+          merge-multiple: true
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION_NAME=$(python3 -c "import re, pathlib; print(re.search(r'VERSION_NAME\s*=\s*\"([^\"]+)\"', pathlib.Path('packaging/android/build_apk.py').read_text()).group(1))")
+          TAG_NAME="v${VERSION_NAME}-${GITHUB_RUN_NUMBER}"
+          if [[ "${GITHUB_REF_NAME}" == v* ]]; then
+            TAG_NAME="${GITHUB_REF_NAME}"
+          fi
+          gh release create "$TAG_NAME" target/android/tml-*.apk \
+            --title "TML Client $TAG_NAME (ARM64)" \
+            --notes "TML Client v${VERSION_NAME} for Android (arm64-v8a)." \
+            --latest || gh release upload "$TAG_NAME" target/android/tml-*.apk --clobber
