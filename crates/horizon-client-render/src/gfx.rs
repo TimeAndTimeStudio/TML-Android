@@ -8508,10 +8508,7 @@ impl Renderer {
                     }
                     pass.set_bind_group(0, &self.group, &[]);
                 }
-                let own_stars = self
-                    .native
-                    .as_ref()
-                    .is_some_and(|n| n.sky.is_some() && !n.vanilla_stars);
+                let own_stars = false;
                 if !frame.title
                     && frame.stars.is_some()
                     && !own_stars
@@ -9206,13 +9203,7 @@ impl Renderer {
             // terrain and clouds, so the water behind the rain is drawn first.
             pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             if !pack_draws_weather && !oit_on {
-                let native_weather = self
-                    .native
-                    .as_ref()
-                    .filter(|_| !frame.title)
-                    .and_then(|n| Some((n.weather.as_ref()?, &n.frame.group)));
-                self.weather
-                    .draw(&mut pass, &self.entity_group, native_weather);
+                self.weather.draw(&mut pass, &self.entity_group, None);
                 pass.set_bind_group(0, &self.group, &[]);
             }
             // LevelRenderer: the world border after translucent terrain and weather.
