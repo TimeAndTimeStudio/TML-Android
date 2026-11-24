@@ -1360,7 +1360,6 @@ dependencies = [
  "horizon-optifine",
  "horizon-protocol",
  "horizon-server-files",
- "horizon-shaders",
  "horizon-telemetry",
  "horizon-theme",
  "horizon-threads",
