@@ -922,7 +922,34 @@ impl Item {
     fn touched(self, s: &mut Settings) {
         let presetless = matches!(
             self,
-);
+            Item::Horizon(
+                H::Preset
+                    | H::BlueMapAutoDetect
+                    | H::BlueMapRadius
+                    | H::Overlay
+                    | H::ScreenshotQuality
+                    | H::Pacing
+                    | H::PresentMode
+                    | H::Workers
+                    | H::FrameGeneration
+                    | H::BatteryMode
+                    | H::ShadowCache
+                    | H::GraphicsApi
+            ) | Item::Vanilla(
+                Opt::GuiScale
+                    | Opt::Fullscreen
+                    | Opt::Vsync
+                    | Opt::MaxFps
+                    | Opt::Fov
+                    | Opt::Gamma
+                    | Opt::InactivityFps
+                    | Opt::ViewBobbing
+                    | Opt::ChunkFade
+                    | Opt::Vignette
+                    | Opt::Autosave
+                    | Opt::AttackIndicator
+            )
+        );
         if !presetless {
             s.horizon.preset = Preset::Custom;
         }

@@ -171,9 +171,6 @@ impl Game<'_> {
         crate::logging::game_home()
     }
     /// `shaderpacks/` in the game folder.
-    pub(super) fn shader_packs_dir() -> std::path::PathBuf {
-        Self::game_dir().join(horizon_client::shader_pack_list::DIR)
-    }
     pub(super) fn gui_size(&self) -> (f32, f32) {
         let size = self
             .renderer
@@ -207,8 +204,6 @@ impl Game<'_> {
         ui.minecart_improvements = minecart_improvements;
         let root = self.options.resources.clone();
         ui.languages = lang::available(&[&root]);
-        self.settings.shader_packs =
-            horizon_client::shader_pack_list::scan(&Self::shader_packs_dir());
         self.refresh_pack_lists();
     }
     /// While the resource pack screen is open, `resourcepacks/` is looked at once a second
@@ -488,12 +483,10 @@ impl Game<'_> {
                     self.dragging = false;
                     self.open_touch_editor();
                 }
-                Event::ListShaderPacks => {}
                 Event::ListMods => self.list_copied_native_mods(),
                 Event::ModToggled(i) => self.mod_toggled(i),
                 Event::NativeGame(act) => self.native_game_button(act),
                 // Saved. TML has no shader packs, so no pick is ever loaded.
-                Event::ShaderPack => self.settings.save(&Self::options_path()),
                 Event::OpenCustomButtons => self.open_custom_buttons(),
                 Event::CustomButtons => self.save_custom_buttons(),
                 Event::CustomImage(id, pixels) => {
@@ -503,14 +496,6 @@ impl Game<'_> {
                     self.save_custom_buttons();
                 }
                 Event::ImportButtonImage(id) => self.pick_button_image(id),
-                Event::OpenShaderOptions => {}
-                Event::ShaderOptions => {}
-                Event::NativePackOptions(i) => {
-                    if let Some(pack) = self.settings.shader_packs.get(i) {
-                        pack.save_values(&Self::shader_packs_dir());
-                    }
-                }
-                Event::OpenShaderPackFolder => self.open_game_folder(&Self::shader_packs_dir()),
                 Event::NativeButton(i, b) => {
                     // Android: the Native mods row's button opens its card (native_builds.rs).
                     #[cfg(target_os = "android")]

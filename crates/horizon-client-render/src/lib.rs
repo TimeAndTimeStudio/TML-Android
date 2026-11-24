@@ -90,8 +90,6 @@ pub mod sculk;
 pub mod section_mask;
 pub mod server_terrain;
 pub mod settings;
-pub mod shader_options;
-pub mod shader_pack_list;
 pub mod signs;
 pub mod skins;
 pub mod sound_engine;
