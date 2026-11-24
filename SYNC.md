@@ -263,6 +263,12 @@ self-contained performance change that applied to this tree:
   `Collides`-generic movement (upstream uses `Borrow<VoxelShape>`).
 - `19c9350647` — Arabic shaping consumes a run of following marks in one linear pass.
   (The upstream origin-preservation test needs `Span::origin`/`Text::untrusted`, absent here.)
+- `576b17b8a9` — `LevelTicks::begin_tick` keeps each due chunk's priority, sub-tick order and
+  deadline in a `Heap<DueChunk>` instead of a `Heap<i64>` re-reading the live head per comparison;
+  its cached-head equivalence test is kept and passes.
+- `7f693e21b4` — `Behaviours` resolves its fixed hot-path block tags (fire, lava fire spread,
+  hanging signs, speleothems, nether portal frame) once at load, on both the source and cached-table
+  paths, so hot paths no longer look them up by name.
 
 Already present in this tree (verified by their code being in `HEAD`): `ab44288662` (cloud
 `CloudMask` rebuild) and most of `e349aeccea` (packed light BFS; only upstream's later
@@ -299,7 +305,7 @@ gap without porting the intermediate commit first. The prerequisite is named for
 
 Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`, `5db9bc3f45`,
 `d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
-`b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`.
+`b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`.
 
 The remaining upstream perf commits from the Nov 20-24 window are ~130; the ones not in this
 table all modify files this tree never had (the Nov 23-24 gameplay/render reorganisation), so
