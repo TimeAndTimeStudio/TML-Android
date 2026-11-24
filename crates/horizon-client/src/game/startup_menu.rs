@@ -644,7 +644,10 @@ impl Loading {
     pub(super) fn apply_menu_settings(&mut self) {
         if let Some(renderer) = &mut self.renderer {
             renderer.gamma = self.settings.gamma;
-            renderer.set_present_mode(self.settings.vsync, self.settings.horizon.present_mode);
+            renderer.set_present_mode(
+                self.settings.vsync,
+                horizon_client::graphics::PresentMode::Auto,
+            );
         }
         horizon_client::hud::GUI_SCALE.store(self.settings.gui_scale, Ordering::Relaxed);
         super::narrator::sync(&self.settings);

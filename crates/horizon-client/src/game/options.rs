@@ -602,7 +602,9 @@ impl Game<'_> {
             r.gamma = s.gamma;
             r.fullbright = s.extras.fullbright;
             r.improved_transparency = s.improved_transparency;
-            r.set_present_mode(s.vsync, s.horizon.present_mode);
+            // Present mode is not a choice in TML: every device gets the best its surface
+            // offers (Fifo with VSync, as vanilla; Mailbox or Immediate when VSync is off).
+            r.set_present_mode(s.vsync, horizon_client::graphics::PresentMode::Auto);
             r.animated_textures = s.horizon.animated_textures;
             r.screenshot_quality = s.horizon.screenshot_quality;
             r.set_mipmap_levels(s.mipmap_levels.max(0) as u32);
@@ -610,12 +612,9 @@ impl Game<'_> {
                 s.file.int("textureFiltering"),
                 s.file.int("maxAnisotropyBit"),
             );
-            r.set_world_post(
-                scale,
-                s.horizon.fxaa,
-                s.horizon.taa,
-                s.horizon.upscaling.ratio(),
-            );
+            // TML ships no anti-aliasing: no FXAA, no TAA and no TAA upscaling. The world is
+            // drawn at the resolution scale above and shown 1:1.
+            r.set_world_post(scale, false, false, 1.0);
             r.set_frame_generation(false);
             r.set_hdr(
                 s.horizon.hdr,
@@ -745,22 +744,19 @@ impl Game<'_> {
         }
     }
     /// `Minecraft.runTick`'s frame limiter: `FramerateLimiter.limitDisplayFPS`
-    /// below 260 frames per second, sleeping then spin-waiting until the
-    /// frame's slot ends (not in scripted frame-count runs).
+    /// below 260 frames per second (not in scripted frame-count runs).
+    ///
+    /// TML locks frame pacing to Efficient: it sleeps the whole wait instead of
+    /// spinning the last half millisecond, and frames keep to a fixed grid of
+    /// slots, so a late wake-up does not lower the frame rate and a phone does
+    /// not burn CPU between frames.
     pub(super) fn limit_frame(&mut self) {
         if self.options.frames.is_some() || self.options.paced_by_split {
             return;
         }
         let limit = self.framerate_limit();
-        match self.settings.horizon.pacing {
-            horizon_client::graphics::Pacing::Precise => {
-                horizon_client::window::end_frame(&mut self.limiter, limit, &mut self.frame_clock)
-            }
-            horizon_client::graphics::Pacing::Efficient => {
-                let mut clock = horizon_client::window::SleepingClock(self.frame_clock);
-                horizon_client::window::end_frame_on_grid(&mut self.limiter, limit, &mut clock);
-            }
-        }
+        let mut clock = horizon_client::window::SleepingClock(self.frame_clock);
+        horizon_client::window::end_frame_on_grid(&mut self.limiter, limit, &mut clock);
     }
 }
 

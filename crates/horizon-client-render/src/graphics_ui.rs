@@ -334,16 +334,6 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
                             "World pixels per screen pixel. Below 100% is faster on the GPU.",
                         ),
                         h(
-                            H::Antialiasing,
-                            Medium,
-                            "Smooths jagged edges. FXAA: softer. TAA: smoothest, moving things may trail.",
-                        ),
-                        h(
-                            H::Upscaling,
-                            High,
-                            "Renders the world smaller and rebuilds it with TAA. Faster, softer.",
-                        ),
-                        h(
                             H::ScreenshotQuality,
                             None,
                             "F2 screenshots at this many times the game's resolution. Higher takes longer.",
@@ -516,21 +506,6 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
                 (
                     "Frames",
                     vec![
-                        h(
-                            H::PresentMode,
-                            None,
-                            "How frames reach the screen while VSync is off.",
-                        ),
-                        h(
-                            H::Pacing,
-                            None,
-                            "Efficient sleeps until the next frame; Precise spins, like vanilla.",
-                        ),
-                        h(
-                            H::GraphicsApi,
-                            None,
-                            "Vulkan, then DirectX 12 (Windows) or OpenGL (Linux) where it fails. Next start.",
-                        ),
                         h(
                             H::TranslucentBatching,
                             Saves,
