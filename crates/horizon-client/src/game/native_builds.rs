@@ -322,7 +322,7 @@ fn get(url: &str, version: &str) -> Result<ureq::Response, String> {
         .timeout_read(Duration::from_secs(30))
         .build()
         .get(url)
-        .set("User-Agent", &format!("Starling/{version}"))
+        .set("User-Agent", &format!("TMLClient/{version}"))
         .call()
         .map_err(|e| e.to_string())
 }

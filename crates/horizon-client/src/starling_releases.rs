@@ -1,15 +1,13 @@
-//! Where Starling's releases come out, and what of a release is Starling's: for the update prompt
+//! Where TML Client's releases come out, and what of a release is TML's: for the update prompt
 //! (game/update_offer.rs) and the native mod builds (game/native_builds.rs), on Android.
 //!
-//! Starling and Horizon Android are one project now, in the organisation's repository
-//! (starling-client/starling); Starling's own (JuanLuci/starling) is where its releases came out
-//! before, and still do until the merged one. Both are asked, the organisation's first, so an
-//! install follows the releases wherever they come out. The organisation's repository also holds
-//! Horizon Android's releases (its APKs are named after it) and preview builds of Starling
-//! (`starling-preview-...`): only an APK named `starling-<version>-...` is an update.
+//! TML Android lives in its own repository (TimeAndTimeStudio/TML-Android), where every release is
+//! published (`android.yml`): its APKs are named `tml-<version>-<abi>.apk`, and an install follows
+//! them from there. The update check reads that repository's latest release and offers the APK that
+//! matches this process's ABI when the version is newer than the one running.
 
-/// The repositories, as GitHub's API names them, the organisation's first.
-pub const REPOSITORIES: [&str; 1] = ["TimeAndTimeStudio/Rust-Android"];
+/// The repositories, as GitHub's API names them, the first asked first.
+pub const REPOSITORIES: [&str; 1] = ["TimeAndTimeStudio/TML-Android"];
 
 /// A repository's latest release, as GitHub's API serves it.
 pub fn latest_url(repository: &str) -> String {
@@ -126,9 +124,9 @@ pub fn newest(updates: impl IntoIterator<Item = Update>) -> Option<Update> {
         })
 }
 
-/// Where Starling's own build service is: a file on the organisation's protected branch, so the
-/// service can move without an update.
-pub const BUILD_SERVER_URL: &str = "https://raw.githubusercontent.com/starling-client/starling/starling/packaging/android/build-server.txt";
+/// Where TML's own build service is: a file on this repository's branch, so the service can move
+/// without an update (packaging/android/build-server.txt, bundled into the APK as a fallback).
+pub const BUILD_SERVER_URL: &str = "https://raw.githubusercontent.com/TimeAndTimeStudio/TML-Android/main/packaging/android/build-server.txt";
 
 /// `text` as a build server's address, when it is one: HTTPS to a host, maybe with a port, and
 /// nothing else (no account, path or query to hide where it really goes).

@@ -1,11 +1,10 @@
-//! Android: the prompt, over the title screen, when GitHub has a newer Starling release than this
-//! one: the newest of the organisation's repository and Starling's own (starling_releases, which
-//! also keeps Horizon Android's releases and preview builds out). Update downloads its APK and
-//! hands it to Android's installer, which asks the player (and, the first time, to allow
-//! installing from Starling) and offers to open the game again once it is in; Tomorrow asks again
-//! in a day; No, at the next start. Only a release asks: a test build is signed with another key,
-//! and the release could not install over it (`STARLING_UPDATE_TEST=<version>` makes one ask as
-//! that version, to try the prompt).
+//! Android: the prompt, over the title screen, when GitHub has a newer TML Client release than this
+//! one (the repository in starling_releases::REPOSITORIES, TimeAndTimeStudio/TML-Android). Update
+//! downloads its APK and hands it to Android's installer, which asks the player (and, the first
+//! time, to allow installing from TML Client) and offers to open the game again once it is in;
+//! Tomorrow asks again in a day; No, at the next start. Only a release asks: a test build is signed
+//! with another key, and the release could not install over it (`STARLING_UPDATE_TEST=<version>`
+//! makes one ask as that version, to try the prompt).
 use super::Game;
 use horizon_client::{
     hud::HudBatch,
@@ -75,7 +74,7 @@ fn now() -> u64 {
 /// A repository's latest release, as GitHub's API serves it.
 fn latest(url: &str, current: &str) -> Result<serde_json::Value, String> {
     let text = ureq::get(url)
-        .set("User-Agent", &format!("Starling/{current}"))
+        .set("User-Agent", &format!("TMLClient/{current}"))
         .set("Accept", "application/vnd.github+json")
         .timeout(Duration::from_secs(15))
         .call()
