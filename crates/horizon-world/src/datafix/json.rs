@@ -3,6 +3,7 @@
 //! Strings stay UTF-16 like Java's; numbers keep their literal like Gson's
 //! `LazilyParsedNumber`.
 use crate::nbt::{Compound, JavaString, Tag};
+use indexmap::IndexMap;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Json {
@@ -43,6 +44,38 @@ impl Json {
     }
 }
 
+// The ordered index is temporary so the public object keeps its original Vec.
+const INDEX_AFTER_FIELDS: usize = 32;
+#[derive(Default)]
+struct ObjectEntries {
+    entries: Vec<(Vec<u16>, Json)>,
+    indexed: Option<IndexMap<Vec<u16>, Json>>,
+}
+impl ObjectEntries {
+    fn insert(&mut self, key: Vec<u16>, value: Json) {
+        if let Some(indexed) = &mut self.indexed {
+            indexed.insert(key, value);
+            return;
+        }
+
+        if self.entries.len() == INDEX_AFTER_FIELDS {
+            // Move the keys and values into the index, preserving their order.
+            let mut indexed = IndexMap::with_capacity(INDEX_AFTER_FIELDS * 2);
+            indexed.extend(std::mem::take(&mut self.entries));
+            indexed.insert(key, value);
+            self.indexed = Some(indexed);
+        } else {
+            Json::insert(&mut self.entries, key, value);
+        }
+    }
+
+    fn finish(self) -> Json {
+        Json::Obj(match self.indexed {
+            Some(indexed) => indexed.into_iter().collect(),
+            None => self.entries,
+        })
+    }
+}
 #[derive(Clone, Copy, PartialEq)]
 enum Mode {
     Strict,
@@ -134,10 +167,10 @@ impl Reader<'_> {
     }
     fn object(&mut self, depth: usize) -> R<Json> {
         self.pos += 1;
-        let mut entries = Vec::new();
+        let mut entries = ObjectEntries::default();
         if self.skip_ws()? == Some(u('}')) {
             self.pos += 1;
-            return Ok(Json::Obj(entries));
+            return Ok(entries.finish());
         }
         loop {
             let c = self.skip_ws()?.ok_or(())?;
@@ -170,11 +203,11 @@ impl Reader<'_> {
                 _ => return Err(()),
             }
             let value = self.value(depth + 1)?;
-            Json::insert(&mut entries, name, value);
+            entries.insert(name, value);
             match self.skip_ws()?.ok_or(())? {
                 0x7D => {
                     self.pos += 1;
-                    return Ok(Json::Obj(entries));
+                    return Ok(entries.finish());
                 }
                 0x2C => self.pos += 1,
                 0x3B if self.lenient() => self.pos += 1,
