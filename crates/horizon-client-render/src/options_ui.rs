@@ -5730,7 +5730,23 @@ impl OptionsUi {
                         Act::None => {}
                     }
                 }
-}
+                WKind::Slider { opt, .. } => {
+                    self.can_change_value = true;
+                    self.dragging = Some(opt);
+                    let v = ui::slider_value(wd.x, wd.w, x);
+                    self.slider_value = Some((opt, v, Instant::now()));
+                    drag_slider(opt, s, v, &mut events);
+                }
+                WKind::LanguageRow { code, .. } => {
+                    self.can_change_value = false;
+                    if self.language_choice.as_deref() == Some(code.as_str()) {
+                        events.extend(self.back(s));
+                    } else {
+                        self.language_choice = Some(code);
+                    }
+                }
+                _ => {}
+            }
             break;
         }
         events
