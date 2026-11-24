@@ -97,24 +97,6 @@ pub enum H {
     HdrUiBrightness,
     BatteryMode,
     ShadowCache,
-    /// Picks a shader pack and opens shader options.
-    /// Direct tick-box selection for Off (disable shaders).
-    /// Direct tick-box selection for the bundled phone-first pack, TML Visuals Lite.
-    /// Direct tick-box selection for custom shader packs.
-    /// Detailed pack settings screen (shaders.properties / [[pages]]).
-    /// The quality profile of the active shader pack.
-    /// Opens the shaderpacks folder in the system file manager.
-    /// Toggles terrain & entity shadows in shader pack.
-    /// Dynamic handheld lighting.
-    /// Ambient occlusion (AO) in shader pack.
-    /// Sun rays / volumetric light shafts.
-    /// Volumetric clouds in shader pack.
-    /// Wind waving on plants and water.
-    /// Water wave quality & refraction.
-    /// Bloom & glare intensity.
-    /// Camera motion blur.
-    /// Anti-aliasing (FXAA / TAA).
-    /// Resets all options of active pack to default.
     GraphicsApi,
     TranslucentBatching,
 }
@@ -999,11 +981,6 @@ pub enum Action {
     BindKey(&'static str),
     /// Start HDR calibration.
     Calibrate,
-    /// Open the shader packs options screen.
-    /// Open detailed shader pack options screen.
-    /// Open the shaderpacks folder in the file manager.
-    /// Active shader pack changed.
-    /// Player switched to the shaders tab.
     Done,
 }
 

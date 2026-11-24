@@ -695,7 +695,8 @@ pub struct Graphics {
     /// batches where the device can (`translucent_batching_offered`): there is no switch, and
     /// the saved value is kept only so old options files parse. Its key is `batchTranslucent`.
     pub translucent_batching: bool,
-    /// The shader pack picked in `shaderpacks/` (`shader_pack_list`); empty: none. Its key is
+    /// The shader pack older versions picked in `shaderpacks/`; empty: none. TML has no
+    /// shader packs now: the value is kept only so old options files parse. Its key is
     /// not `shaderPack`, which versions before the clean-room rewrite saved and which stays
     /// ignored.
     pub shader_pack: String,

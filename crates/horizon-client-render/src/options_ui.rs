@@ -1721,11 +1721,6 @@ pub enum Page {
     Mods,
     /// A native mod's settings page: its index in `mods.installed`.
     NativeMod(usize),
-    /// Horizon's shader packs, either kind (`shader_pack_list`): one on or none, and a
-    /// `shaders/` pack's profile.
-    /// The options of `s.shader_packs[.0]`, a Horizon pack: its `[[pages]]` entry `.1`, the
-    /// first the one the button opens.
-    /// The picked `shaders/` pack's options (`shader_options`), one of its screens at a time.
     /// The player's own touch buttons (`Settings::custom_buttons`), and what one of them does.
     CustomButtons,
     CustomButton(u32),
@@ -1782,10 +1777,6 @@ enum Act {
     ResetPadKey(&'static str),
     ResetPadKeys,
     ToggleMod(usize),
-    /// Pick `s.shader_packs[i]`, or turn it off when it is the pick (None: Off).
-    /// The next profile of the chosen pack, on the Shader Packs page.
-    PackProfile,
-    /// The next of the frame limits the Shader Packs page offers.
     /// The Custom Buttons page, a new button there, one to change or take away, a control or a
     /// keyboard key for it, and its icon.
     CustomButtons,
@@ -1805,12 +1796,6 @@ enum Act {
     CanvasClear,
     CanvasPlate,
     CanvasImport(u32),
-    /// Open the picked pack's Shader Options page.
-    /// Open the options page of the Horizon pack `s.shader_packs[.0]`.
-    /// Option `.1` of that pack: its next value.
-    /// Every option of that pack back to its default.
-    /// Shader Options: the next value of an option, a screen of the pack, the next profile,
-    /// every option back to its default.
     /// The installed native mod's settings page.
     ModSettings(usize),
     /// A native mod's key (mod, key) waits for a key; a button of its page.
@@ -1960,19 +1945,12 @@ pub enum Event {
     OpenModFolder,
     /// Android: a page's Catalog button (game/mod_catalog.rs).
     OpenCatalog(CatalogShelf),
-    /// The Shader Packs page opened: list `shaderpacks/` into `shader_packs`.
     /// The Mods page opened: the native mods folder read again, for a mod copied in meanwhile.
     ListMods,
     /// Installed mod `.0` was turned on or off (after `Changed`, which saved it).
     ModToggled(usize),
     /// Android: a button of the Mods page's game with native mods (`ModList::native_game`).
     NativeGame(crate::mod_list::NativeGameAct),
-    /// A shader pack or its profile was picked, or the pack turned off: save and apply it.
-    /// The Shader Packs page's folder (on a phone without the Starling folder, its offer).
-    /// The Shader Options page opened: read the picked pack's options into `shader_options`.
-    /// The Shader Options page closed with changes: save them and load the pack again.
-    /// The options of `shader_packs[.0]`, a Horizon pack, changed: save them (the pack reloads
-    /// with them).
     /// Native mod `.0`'s page opened: the game asks the mod for its labels
     /// again (they were made with the list, maybe in another language).
     NativeSettings(usize),
@@ -4610,8 +4588,7 @@ impl OptionsUi {
                     w,
                     h: 9.0,
                     kind: WKind::Text {
-                        text: Self::pack_page_title(s, page)
-                            .unwrap_or_else(|| tr(Self::title(page))),
+                        text: tr(Self::title(page)),
                         color: u32::MAX,
                         centered: true,
                     },
@@ -5746,14 +5723,16 @@ impl OptionsUi {
         }
         if matches!(
             self.page(),
-) {
+            Page::Packs | Page::SplitSetup | Page::SplitProfiles | Page::HdrCalibration
+        ) {
             return false;
         }
         let (widgets, top, bottom, _) = self.layout(s, size.0, size.1);
         widgets.iter().any(|wd| {
             matches!(
                 wd.kind,
-) && ui::hovered(cursor, wd.x, wd.y, wd.w, wd.h)
+                WKind::Button { active: true, .. } | WKind::LanguageRow { .. }
+            ) && ui::hovered(cursor, wd.x, wd.y, wd.w, wd.h)
                 && !(wd.list && (cursor.1 < top || cursor.1 >= bottom))
         })
     }
@@ -9541,7 +9520,7 @@ mod tests {
     }
 
     #[test]
-    fn the_mods_and_shader_packs_pages_open_the_catalog_on_their_own_shelf() {
+    fn the_mods_page_opens_the_catalog_on_its_own_shelf() {
         let _atlas = atlas();
         let s = Settings::default();
         for size in PHONE_GUI {

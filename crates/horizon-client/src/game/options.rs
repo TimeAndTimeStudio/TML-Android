@@ -170,7 +170,6 @@ impl Game<'_> {
     pub(super) fn game_dir() -> std::path::PathBuf {
         crate::logging::game_home()
     }
-    /// `shaderpacks/` in the game folder.
     pub(super) fn gui_size(&self) -> (f32, f32) {
         let size = self
             .renderer
@@ -486,7 +485,6 @@ impl Game<'_> {
                 Event::ListMods => self.list_copied_native_mods(),
                 Event::ModToggled(i) => self.mod_toggled(i),
                 Event::NativeGame(act) => self.native_game_button(act),
-                // Saved. TML has no shader packs, so no pick is ever loaded.
                 Event::OpenCustomButtons => self.open_custom_buttons(),
                 Event::CustomButtons => self.save_custom_buttons(),
                 Event::CustomImage(id, pixels) => {

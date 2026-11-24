@@ -798,7 +798,6 @@ impl Loading {
                     }
                 }
                 Event::TouchLayout => self.open_menu_touch_editor(),
-                // TML has no shader packs: there is nothing to list.
                 // Before the game starts the mods are listed as it starts (`start_mods`).
                 Event::ListMods => {}
                 Event::OpenCustomButtons => {
@@ -817,7 +816,6 @@ impl Loading {
                 Event::ImportButtonImage(_) => {
                     horizon_client::platform::pick_file();
                 }
-                // TML has no shader packs: there are no pack options.
                 Event::Credits => {
                     if let Some(gui) = &self.gui {
                         let name = self.options.as_ref().map_or_else(
