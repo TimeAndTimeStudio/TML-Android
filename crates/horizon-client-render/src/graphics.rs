@@ -691,11 +691,9 @@ pub struct Graphics {
     /// The graphics API (Windows only; see `GraphicsApi`).
     pub api: GraphicsApi,
     /// Translucent quads in vertex buffers of their own (`gfx`'s translucent arena), so their
-    /// back-to-front draws go out in a few calls, for a little more video memory. On by
-    /// default (Translucent Batching, Advanced graphics); read when a renderer is made (start,
-    /// resource-pack reload), where it is offered (`translucent_batching_offered`). Its key is
-    /// `batchTranslucent`: `translucentBatching`, which every save wrote as false while it was
-    /// off by default and had no switch, stays ignored.
+    /// back-to-front draws go out in a few calls, for a little more video memory. TML always
+    /// batches where the device can (`translucent_batching_offered`): there is no switch, and
+    /// the saved value is kept only so old options files parse. Its key is `batchTranslucent`.
     pub translucent_batching: bool,
     /// The shader pack picked in `shaderpacks/` (`shader_pack_list`); empty: none. Its key is
     /// not `shaderPack`, which versions before the clean-room rewrite saved and which stays

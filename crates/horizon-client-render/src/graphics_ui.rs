@@ -49,7 +49,7 @@ impl Page {
             Page::Quality => "The sky and weather, lighting, textures and the image.",
             Page::Performance => "Chunk loading, culling and power use.",
             Page::Shaders => "Shader packs, Horizon's and shaders/ folder ones, and their options.",
-            Page::Advanced => "How frames reach the screen, and the performance overlay.",
+            Page::Advanced => "The performance overlay over the game.",
         }
     }
 }
@@ -442,16 +442,6 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
         (
             Page::Advanced,
             vec![
-                (
-                    "Frames",
-                    vec![
-                        h(
-                            H::TranslucentBatching,
-                            Saves,
-                            "Water and glass in one buffer: fewer draw calls, a bit more VRAM. Next start.",
-                        ),
-                    ],
-                ),
                 (
                     "Overlay",
                     vec![h(
@@ -3331,57 +3321,6 @@ mod tests {
             assert_eq!(s.horizon.preset, Preset::Custom);
         }
         assert_eq!(item.label(&s).plain(), "Entity Culling: Asynchronous");
-    }
-
-    /// Translucent Batching: a switch on the Advanced page, on by default, no part of a
-    /// preset, and greyed out, reading Off, where the device can't batch.
-    #[test]
-    fn translucent_batching_is_an_advanced_switch_where_the_device_can() {
-        let item = Item::Horizon(H::TranslucentBatching);
-        let page = items()
-            .into_iter()
-            .find(|(_, i)| *i == item)
-            .map(|(p, _)| p);
-        if cfg!(target_os = "macos") {
-            // Metal draws flat: never offered, so not shown.
-            assert_eq!(page, None);
-            return;
-        }
-        assert_eq!(page, Some(Page::Advanced));
-        let mut s = Settings::default();
-        s.horizon.preset = Preset::Balanced;
-        assert_eq!(item.switch(&s), Some(true));
-        let mut ui = GraphicsUi::default();
-        // Where the device can't, the saved On reads Off, and neither a click nor Enter
-        // after it does anything: no sound, no change, no save.
-        crate::graphics::offer_translucent_batching(false);
-        assert!(item.blocked(&s).is_some());
-        assert_eq!(item.label(&s).plain(), "Translucent Batching: Off");
-        let r = row(&mut ui, &s, item);
-        let point = (r[0] + 4.0, r[1] + 4.0);
-        assert!(press(&mut ui, &mut s, point).is_empty());
-        ui.focus = Some(Target::Item(item));
-        let enter = ui.key_modifiers(&mut s, K::Enter, None, false, SIZE, FB);
-        assert!(enter.0.is_empty());
-        assert!(s.horizon.translucent_batching);
-        // Where it can, a click switches it and keeps the preset.
-        crate::graphics::offer_translucent_batching(true);
-        assert_eq!(item.label(&s).plain(), "Translucent Batching: On");
-        assert_eq!(
-            press(&mut ui, &mut s, point),
-            [Action::ButtonClick, Action::Changed]
-        );
-        assert!(!s.horizon.translucent_batching);
-        assert_eq!(item.label(&s).plain(), "Translucent Batching: Off");
-        assert_eq!(s.horizon.preset, Preset::Balanced);
-        // No preset sets it.
-        for on in [false, true] {
-            s.horizon.translucent_batching = on;
-            for preset in Preset::ALL {
-                crate::graphics::apply_preset(preset, &mut s);
-                assert_eq!(s.horizon.translucent_batching, on, "{preset:?}");
-            }
-        }
     }
 
     #[test]

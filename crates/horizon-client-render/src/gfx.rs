@@ -1176,8 +1176,8 @@ pub struct Renderer {
     /// one sorted-index page) and draws in a few multi-draws rather than one per
     /// few sections.
     translucent_arena: Option<arena::Arena>,
-    /// Translucent Batching (`Graphics::translucent_batching`, read when a renderer
-    /// is made), where it is offered (`graphics::offer_translucent_batching`).
+    /// Translucent Batching, on wherever the device can batch
+    /// (`graphics::offer_translucent_batching`).
     translucent_batching: bool,
     /// Every section and far tile was dropped to change the layout since the game
     /// last asked (`take_dropped_sections`).
@@ -2263,7 +2263,7 @@ impl Renderer {
         prepared: Option<PreparedTextures>,
         previous: Option<&Self>,
         api: GraphicsApi,
-        translucent_batching: bool,
+        _translucent_batching: bool,
         shader_pack: bool,
     ) -> Result<Self> {
         let Opened {
@@ -4121,7 +4121,8 @@ impl Renderer {
         let multi_draw = indirect_capable && indirect_draws_wanted();
         let batchable = translucent_batchable(&adapter.get_info(), indirect_capable);
         crate::graphics::offer_translucent_batching(batchable);
-        let translucent_batching = batchable && translucent_batching;
+        // TML always batches translucent quads where the device can: there is no switch.
+        let translucent_batching = batchable;
         // A new renderer runs no shader pack: the game loads the picked one on its
         // first world frame (`shader_pack`: the picked pack draws flat, a `shaders/`
         // pack or one of Horizon's own with `[shadow]`), and the frames before it, the
