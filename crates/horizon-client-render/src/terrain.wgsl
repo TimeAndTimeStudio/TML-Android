@@ -32,7 +32,8 @@ struct Globals {
     // triangle's volume with the camera; then each rim vertex's normal against the apex.
     sunrise_fan: array<vec4<f32>, 32>,
     // x: Options.textureFiltering (0 none, 1 RGSS, 2 anisotropic), y: the sprite arrays' width
-    // in texels (vanilla's TextureSize).
+    // in texels (vanilla's TextureSize), z: the mip level at which a sprite is one texel when
+    // the views reach it, else 0, w: log2(y) for `sample_nearest` and `rotated_grid`.
     filtering: vec4<f32>,
     // HDR output's tier windows (hdr.rs `Hdr::windows`): x..w low to very bright,
     // [0] where the lift starts, [1] where it is full.
@@ -105,7 +106,7 @@ fn sprite_level(uv: vec2<f32>, layer: u32, lod: f32) -> vec4<f32> {
 // sprites while `uv` stays inside one (see `tile_uv` below).
 fn sample_nearest(uv: vec2<f32>, layer: u32, pixel: vec2<f32>, du: vec2<f32>, dv: vec2<f32>,
                   texel_screen: vec2<f32>, tiled: bool) -> vec4<f32> {
-    let texel_coords = uv / pixel;
+    let texel_coords = uv * globals.filtering.y;
     let center = round(texel_coords) - 0.5;
     var offset = texel_coords - center;
     if SETTLED_TERRAIN {
@@ -120,35 +121,57 @@ fn sample_nearest(uv: vec2<f32>, layer: u32, pixel: vec2<f32>, du: vec2<f32>, dv
         // An anisotropic sampler lays its taps along those gradients, past the sprite's edge,
         // where the clamped sampler reads that edge texel again: long streaks on the far tiles.
         // Asking for the level the gradients give takes the one tap an anisotropy of 1 would.
-        let level = max(length(du), length(dv)) / min(pixel.x, pixel.y);
-        return sprite_level(at, layer, max(0.0, log2(level)));
+        let max_grad_sq = max(dot(du, du), dot(dv, dv));
+        return sprite_level(at, layer,
+            max(0.0, 0.5 * log2(max(max_grad_sq, 1e-36)) + globals.filtering.w));
     }
     return sprite_grad(at, layer, du, dv);
 }
 // sampleRGSS: four rotated-grid samples of the two nearest mip levels, faded in as the texels
 // shrink below two screen pixels, over sample_nearest.
 fn sample_rgss(uv: vec2<f32>, layer: u32, pixel: vec2<f32>, du: vec2<f32>, dv: vec2<f32>,
-               texel_screen: vec2<f32>, tiled: bool) -> vec4<f32> {
-    let max_texel = max(texel_screen.x, texel_screen.y);
-    let min_pixel = min(pixel.x, pixel.y);
-    let blend = smoothstep(min_pixel, min_pixel * 2.0, max_texel);
-    let du_len = length(du);
-    let dv_len = length(dv);
-    let effective = sqrt(min(du_len, dv_len) * max(du_len, dv_len));
-    let exact = max(0.0, log2(effective / min_pixel));
-    let low = floor(exact);
-    let mip_blend = fract(exact);
-    var offsets = array<vec2<f32>, 4>(
-        vec2(0.125, 0.375), vec2(-0.125, -0.375), vec2(0.375, -0.125), vec2(-0.375, 0.125));
-    var sum_low = vec4(0.0);
-    var sum_high = vec4(0.0);
-    for (var i = 0; i < 4; i++) {
-        let p = uv + offsets[i] * pixel;
-        sum_low += sprite_level(p, layer, low);
-        sum_high += sprite_level(p, layer, low + 1.0);
+               sq: vec2<f32>, tiled: bool) -> vec4<f32> {
+    let max_sq = max(sq.x, sq.y);
+    let min_pixel = pixel.x;
+    let min_sq = min_pixel * min_pixel;
+    // Only the side of the mix that has weight is sampled: near texels (blend 0) take
+    // sample_nearest's one tap alone, far ones (blend 1) the rotated grid alone, skipping
+    // both `sqrt(sq)` ops and `smoothstep` outside the narrow (min_pixel, 2*min_pixel) band.
+    if max_sq <= min_sq {
+        return sample_nearest(uv, layer, pixel, du, dv, sqrt(sq), tiled);
     }
-    let rgss = mix(sum_low * 0.25, sum_high * 0.25, mip_blend);
+    let rgss = rotated_grid(uv, layer, pixel, du, dv);
+    if max_sq >= 4.0 * min_sq {
+        return rgss;
+    }
+    let texel_screen = sqrt(sq);
+    let blend = smoothstep(min_pixel, min_pixel * 2.0, max(texel_screen.x, texel_screen.y));
     return mix(sample_nearest(uv, layer, pixel, du, dv, texel_screen, tiled), rgss, blend);
+}
+fn rotated_grid(uv: vec2<f32>, layer: u32, pixel: vec2<f32>, du: vec2<f32>,
+                dv: vec2<f32>) -> vec4<f32> {
+    // log2(sqrt(length(du) * length(dv)) / (1 / sprite_size))
+    // = 0.25 * log2(dot(du, du) * dot(dv, dv)) + log2(sprite_size).
+    // 1e-36 is a normal f32 (> FLT_MIN) so FTZ GPUs never flush it to 0 before `log2`.
+    let area_sq = dot(du, du) * dot(dv, dv);
+    let exact = max(0.0, 0.25 * log2(max(area_sq, 1e-36)) + globals.filtering.w);
+    // From this level on the sprite is a single texel (0: the views stop before one is), and
+    // the sampler clamps any level past it to it: there every tap reads the same value, so
+    // one tap gives the four's mean. Distant tiles sit there.
+    let single = globals.filtering.z;
+    if single > 0.0 && floor(exact) >= single {
+        return sprite_level(uv, layer, floor(exact));
+    }
+    // sampleRGSS takes each of the four taps at the two mip levels around `exact` and mixes them
+    // by fract(exact). The sprite sampler's mip filter is linear, so a tap at the fractional
+    // level is that mix: four texture instructions where the shader mix took eight.
+    let d0 = vec2(0.125, 0.375) * pixel;
+    let d1 = vec2(0.375, -0.125) * pixel;
+    let sum = sprite_level(uv + d0, layer, exact)
+        + sprite_level(uv - d0, layer, exact)
+        + sprite_level(uv + d1, layer, exact)
+        + sprite_level(uv - d1, layer, exact);
+    return sum * 0.25;
 }
 // Distant terrain tiles (lod/mesh.rs) count their UVs in blocks past 1: each block takes the
 // sprite again, as separate faces would under the clamped sampler. Sprite UVs in [0, 1] stay.
@@ -165,11 +188,11 @@ fn sprite(tiled: vec2<f32>, layer: u32) -> vec4<f32> {
     // block's (whose UVs stay inside its sprite).
     let tiled_face = !SETTLED_TERRAIN && any(tiled - uv >= vec2(0.5));
     let pixel = vec2(1.0 / globals.filtering.y);
-    let texel_screen = sqrt(du * du + dv * dv);
+    let sq = du * du + dv * dv;
     if !SETTLED_TERRAIN && u32(globals.filtering.x) == 1u {
-        return sample_rgss(uv, layer, pixel, du, dv, texel_screen, tiled_face);
+        return sample_rgss(uv, layer, pixel, du, dv, sq, tiled_face);
     }
-    return sample_nearest(uv, layer, pixel, du, dv, texel_screen, tiled_face);
+    return sample_nearest(uv, layer, pixel, du, dv, sqrt(sq), tiled_face);
 }
 
 struct TerrainOut {
@@ -426,8 +449,11 @@ fn terrain_vertex(position: vec3<f32>, uv: vec2<f32>, layer: u32, color: vec4<f3
     const CHUNK_FULLY_VISIBLE_RANGE: f32 = 16.0;
     out.visibility = 1.0;
     if !SETTLED_TERRAIN {
-        out.visibility = mix(1.0, instance_visibility(w),
-            clamp((length(pos) - CHUNK_FULLY_VISIBLE_RANGE) / CHUNK_FULLY_VISIBLE_RANGE, 0.0, 1.0));
+        let vis = instance_visibility(w);
+        if vis < 1.0 {
+            out.visibility = mix(1.0, vis,
+                clamp((length(pos) - CHUNK_FULLY_VISIBLE_RANGE) / CHUNK_FULLY_VISIBLE_RANGE, 0.0, 1.0));
+        }
     }
     return out;
 }

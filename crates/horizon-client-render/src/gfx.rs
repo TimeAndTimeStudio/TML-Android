@@ -1323,6 +1323,18 @@ fn sprite_sampler_descriptor(anisotropy: u16) -> wgpu::SamplerDescriptor<'static
 fn sampler_anisotropy(bit: i32) -> u16 {
     1u16 << bit.clamp(0, 4)
 }
+/// `Globals::filtering` for `terrain.wgsl`: mode, sprite width, the single-texel mip level
+/// (or 0 when the views stop before one), and `log2(sprite_width)` so the shader skips
+/// per-pixel `log2` of the sprite size and its two `sqrt`s in the RGSS LOD.
+fn filtering_uniform(texture_filtering: u32, sprite_width: u32, mipmaps: u32) -> [f32; 4] {
+    let size = sprite_width as f32;
+    let single = if sprite_width.checked_shr(mipmaps) == Some(1) {
+        mipmaps as f32
+    } else {
+        0.0
+    };
+    [texture_filtering as f32, size, single, size.max(1.0).log2()]
+}
 /// terrain.wgsl's group 0.
 #[allow(clippy::too_many_arguments)]
 fn terrain_group(
@@ -6471,12 +6483,11 @@ impl Renderer {
             } else {
                 [[0.0; 4]; 2 * sunrise_fan::TRIANGLES]
             },
-            filtering: [
-                self.texture_filtering as f32,
-                self.sprite_textures[0].width() as f32,
-                0.0,
-                0.0,
-            ],
+            filtering: filtering_uniform(
+                self.texture_filtering,
+                self.sprite_textures[0].width(),
+                self.mipmaps,
+            ),
             hdr_windows: self.hdr.as_ref().map_or([[0.0; 4]; 2], hdr::Hdr::windows),
             hdr_light: [
                 frame.sky.sky_light_factor,
