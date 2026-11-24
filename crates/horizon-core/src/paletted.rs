@@ -471,6 +471,64 @@ impl PalettedContainer {
             }
         }
     }
+    /// The list palette's entries (`get(i)` is `palette()[id[i]]`), or `None`
+    /// for a single-value or a global palette.
+    #[inline]
+    pub fn palette(&self) -> Option<&[u32]> {
+        match &self.palette {
+            Palette::List(list) => Some(list),
+            _ => None,
+        }
+    }
+    /// The stored ids through `map`: `out[i] = map[id of entry i]`, in index
+    /// order, the id being a palette id for a list palette and the value
+    /// itself for the global one. A single-value palette stores no ids: `out`
+    /// is left as it is.
+    pub fn unpack_ids_mapped<T: Copy>(&self, out: &mut [T], map: &[T]) {
+        assert_eq!(out.len(), self.strategy.entries());
+        match self.bits {
+            0 => {}
+            4 => Self::unpack_mapped_fixed::<4, 16, T>(&self.words, out, map),
+            5 => Self::unpack_mapped_fixed::<5, 12, T>(&self.words, out, map),
+            6 => Self::unpack_mapped_fixed::<6, 10, T>(&self.words, out, map),
+            7 => Self::unpack_mapped_fixed::<7, 9, T>(&self.words, out, map),
+            8 => Self::unpack_mapped_fixed::<8, 8, T>(&self.words, out, map),
+            bits => {
+                let per = 64 / usize::from(bits);
+                let m = mask(bits);
+                let shift = u32::from(bits);
+                for (chunk, &word) in out.chunks_mut(per).zip(&self.words) {
+                    let mut w = word;
+                    for cell in chunk {
+                        *cell = map[(w & m) as usize];
+                        w >>= shift;
+                    }
+                }
+            }
+        }
+    }
+    fn unpack_mapped_fixed<const BITS: u32, const PER: usize, T: Copy>(
+        words: &[u64],
+        out: &mut [T],
+        map: &[T],
+    ) {
+        let m = (1u64 << BITS) - 1;
+        let (chunks, tail) = out.as_chunks_mut::<PER>();
+        for (&word, chunk) in words.iter().zip(chunks.iter_mut()) {
+            let mut w = word;
+            for cell in chunk {
+                *cell = map[(w & m) as usize];
+                w >>= BITS;
+            }
+        }
+        if !tail.is_empty() {
+            let mut w = words[chunks.len()];
+            for cell in tail {
+                *cell = map[(w & m) as usize];
+                w >>= BITS;
+            }
+        }
+    }
     /// The palette id of every entry in index order, and the list palette
     /// they index (`get(i)` is `list[ids[i]]`), without looking the values
     /// up; `None` (and `ids` untouched) for a single-value or global palette.
