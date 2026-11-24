@@ -325,7 +325,7 @@ impl Split<'_> {
             host.settings.horizon.api,
             host.settings.horizon.translucent_batching,
             // The pack its own game loads, from its profile.
-            crate::game::shader_packs::picked_pack_draws_flat(&guest.settings),
+            false,
         )?);
         guest.window = Some(window);
         guest.world_renderer_ready = true;

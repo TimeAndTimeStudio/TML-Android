@@ -475,7 +475,6 @@ impl Game<'_> {
             // `gbuffers_entities` draws name tag text (2.3); a sneaking player's faded tag, on its
             // background, blends.
             if tag.discrete {
-                self.mark_translucent_entity(out.len(), "minecraft:name_tag");
                 let light = vertex_light(tag.light);
                 patches.extend(self.name_tag_quads(
                     o,
@@ -491,7 +490,6 @@ impl Game<'_> {
             }
             // LightCoordsUtil.lightCoordsWithEmission(lightCoords, 2).
             let lit = (tag.light >> 4).max(2) << 4 | (tag.light & 15).max(2);
-            self.mark_entity(out.len(), "minecraft:name_tag");
             let light = vertex_light(lit);
             patches.extend(self.name_tag_quads(
                 o,

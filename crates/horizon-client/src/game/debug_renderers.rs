@@ -128,7 +128,6 @@ impl Game<'_> {
             self.solid_face_shapes(eye, &mut fills);
         }
         let start = out.len();
-        self.mark_translucent_entity(start, "");
         let light = vertex_light(0xFF);
         let mut white = HudBatch::new([1, 1]);
         for (quad, color) in fills {

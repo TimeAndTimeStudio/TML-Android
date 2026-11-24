@@ -269,7 +269,6 @@ impl Game<'_> {
             return;
         }
         let light = vertex_light(0xFF);
-        self.mark_translucent_entity(out.len(), "minecraft:test_instance_block");
         let mut patches = Vec::new();
         for (pos, text, color) in markers {
             // A plain colour: the atlas's white pixel at the fill's colour.

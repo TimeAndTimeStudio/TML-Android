@@ -339,7 +339,6 @@ impl Game<'_> {
             if let Some(entry) = kept.get(pos, key, entity.revision(), now) {
                 if in_frustum(self.view_frustum.as_ref(), origin, entry.bounds) {
                     let start = draw.vertices.len();
-                    self.mark_block_entity(start, state);
                     draw.vertices.extend(entry.vertices.iter().map(|v| Vertex {
                         pos: (Vec3::from_array(v.pos) + origin).to_array(),
                         ..*v
@@ -355,7 +354,6 @@ impl Game<'_> {
                 continue;
             }
             let start = draw.vertices.len();
-            self.mark_block_entity(start, state);
             // Drawn relative to the block, then moved to the camera, so what
             // is kept can be moved again.
             draw.block = pos;

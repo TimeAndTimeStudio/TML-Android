@@ -327,7 +327,7 @@ impl Game<'_> {
                     Some(textures),
                     self.settings.horizon.api,
                     self.settings.horizon.translucent_batching,
-                    super::shader_packs::picked_pack_draws_flat(&self.settings),
+                    false,
                 )
             })
             .transpose()
@@ -448,9 +448,6 @@ impl Game<'_> {
             self.renderer = Some(renderer);
             self.apply_ui_settings();
         }
-        // Horizon's own shader pack is built again: its sprite tags name the old atlas's
-        // layers, and a new renderer runs no pack.
-        self.native_shaders = Default::default();
         self.ui.chat.rescale(&self.gui.atlas);
         // The creative screen survives the reload; item names may not.
         self.creative_screen.forget_items();

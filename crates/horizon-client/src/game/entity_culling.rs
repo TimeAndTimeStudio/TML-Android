@@ -378,14 +378,8 @@ fn snapshot_cell(value: f64) -> Option<i32> {
 
 impl Game<'_> {
     pub(super) fn prepare_entity_culling(&mut self, camera: glam::DVec3) {
-        // Spans tell the pack's passes which entities are hidden; without them, nothing changes.
-        self.pack_shadow_casters = match (&self.renderer, &self.pack_ids) {
-            (Some(r), Some(_)) => r.pack_shadow_casters(),
-            // A native pack's shadow pass has no spans to hide entities with: it only needs
-            // the first-person model.
-            (Some(r), None) => (false, r.native_shadow()),
-            _ => (false, false),
-        };
+        // TML has no shader packs: nothing draws a pack shadow pass.
+        self.pack_shadow_casters = (false, false);
         let at = camera.to_array().map(|v| v.floor() as i32);
         let eligible = self.settings.horizon.entity_culling
             != horizon_client::graphics::EntityCullingMode::Off
@@ -438,10 +432,7 @@ impl Game<'_> {
     pub(super) fn cull_entity_vertices(&self, vertices: &mut Vec<Vertex>, start: usize) {
         if let Some(culler) = &self.entity_culler {
             let hidden = culler.hidden(vertices, start, |pos| self.occluder_ready(pos));
-            // A shader pack's shadow pass still draws what the camera cannot see.
-            if hidden
-                && !(self.pack_shadow_casters.0 && self.hide_spans_from(start, vertices.len()))
-            {
+            if hidden {
                 vertices.truncate(start);
             }
             return;
@@ -458,7 +449,7 @@ impl Game<'_> {
             .as_ref()
             .and_then(|culler| culler.proof(&query))
             .is_some_and(|proof| self.async_proof_is_current(proof));
-        if hidden && !(self.pack_shadow_casters.0 && self.hide_spans_from(start, vertices.len())) {
+        if hidden {
             vertices.truncate(start);
         }
         if let Some(culler) = &self.async_entity_culler {

@@ -488,14 +488,11 @@ impl Game<'_> {
                     self.dragging = false;
                     self.open_touch_editor();
                 }
-                Event::ListShaderPacks => {
-                    self.settings.shader_packs =
-                        horizon_client::shader_pack_list::scan(&Self::shader_packs_dir());
-                }
+                Event::ListShaderPacks => {}
                 Event::ListMods => self.list_copied_native_mods(),
                 Event::ModToggled(i) => self.mod_toggled(i),
                 Event::NativeGame(act) => self.native_game_button(act),
-                // Saved; the next frame's `shader_pack_inputs` loads the pick.
+                // Saved. TML has no shader packs, so no pick is ever loaded.
                 Event::ShaderPack => self.settings.save(&Self::options_path()),
                 Event::OpenCustomButtons => self.open_custom_buttons(),
                 Event::CustomButtons => self.save_custom_buttons(),
@@ -506,8 +503,8 @@ impl Game<'_> {
                     self.save_custom_buttons();
                 }
                 Event::ImportButtonImage(id) => self.pick_button_image(id),
-                Event::OpenShaderOptions => self.open_shader_options(),
-                Event::ShaderOptions => self.save_shader_options(),
+                Event::OpenShaderOptions => {}
+                Event::ShaderOptions => {}
                 Event::NativePackOptions(i) => {
                     if let Some(pack) = self.settings.shader_packs.get(i) {
                         pack.save_values(&Self::shader_packs_dir());

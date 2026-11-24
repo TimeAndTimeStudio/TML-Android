@@ -278,7 +278,6 @@ impl Game<'_> {
             } else {
                 "minecraft:item_display"
             };
-            self.mark_entity(out.len(), kind);
             for (id, display) in displays.iter_mut().filter(|(_, d)| d.shows == shows) {
                 display.last_progress = display.progress(partial as f32);
                 let d = display.shown.blend(&display.from, display.last_progress);
@@ -333,7 +332,6 @@ impl Game<'_> {
                 }
             }
         }
-        self.mark_entity(out.len(), "");
         self.text_displays = displays;
     }
     pub(super) fn text_display_geometry(
@@ -344,7 +342,6 @@ impl Game<'_> {
         see_through: &mut Vec<Vertex>,
     ) {
         self.text_display_vertices = 0;
-        self.mark_translucent_entity(normal.len(), "minecraft:text_display");
         let angles = self.display_camera_angles();
         let scale = self.view_scale();
         let background = self.settings.text_background(0.25);

@@ -798,10 +798,8 @@ impl Loading {
                     }
                 }
                 Event::TouchLayout => self.open_menu_touch_editor(),
-                Event::ListShaderPacks => {
-                    self.settings.shader_packs =
-                        horizon_client::shader_pack_list::scan(&Game::shader_packs_dir());
-                }
+                // TML has no shader packs: there is nothing to list.
+                Event::ListShaderPacks => {}
                 // Before the game starts the mods are listed as it starts (`start_mods`).
                 Event::ListMods => {}
                 Event::ShaderPack => self.save_menu_settings(),
@@ -821,21 +819,9 @@ impl Loading {
                 Event::ImportButtonImage(_) => {
                     horizon_client::platform::pick_file();
                 }
-                Event::OpenShaderOptions => {
-                    if let Some((name, profile)) = self.settings.horizon.shader_choice() {
-                        self.settings.shader_options = super::shader_packs::read_shader_options(
-                            &name,
-                            &profile,
-                            &self.settings.language,
-                            &horizon_shaders::Macros::standard(),
-                        );
-                    }
-                }
-                Event::ShaderOptions => {
-                    if let Some(options) = self.settings.shader_options.take() {
-                        super::shader_packs::write_shader_options(&options);
-                    }
-                }
+                // TML has no shader packs: there are no pack options.
+                Event::OpenShaderOptions => {}
+                Event::ShaderOptions => {}
                 Event::NativePackOptions(i) => {
                     if let Some(pack) = self.settings.shader_packs.get(i) {
                         pack.save_values(&Game::shader_packs_dir());

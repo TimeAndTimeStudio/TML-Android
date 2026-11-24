@@ -252,7 +252,6 @@ mod native_projectiles;
 mod native_quick_move;
 mod native_recipes;
 mod native_server;
-mod native_shaders;
 mod native_ticks;
 mod native_visuals;
 mod native_world_columns;
@@ -320,7 +319,6 @@ mod server_links;
 mod server_packs;
 mod server_travel;
 mod setup;
-mod shader_packs;
 mod shelf;
 mod shield;
 mod shoulders;
@@ -2511,10 +2509,9 @@ struct Game<'a> {
     luminance: std::cell::OnceCell<horizon_client::dynamic_light::Luminance>,
     /// Name tags drawn over everything (`RenderPipelines.TEXT_SEE_THROUGH`).
     see_through_vertices: Vec<Vertex>,
-    /// The first-person player's model, which only a native pack's shadow pass draws.
+    /// The first-person player's model, which only the shadow pass draws.
     shadow_only_vertices: std::cell::RefCell<Vec<Vertex>>,
-    /// Runs of `entity_vertices` by entity, for a shader pack's per-entity draws; recorded only
-    /// while `pack_ids` is set (game/shader_packs.rs).
+    /// Runs of `entity_vertices` by entity (`Frame::entity_motion`).
     entity_spans: std::cell::RefCell<Vec<horizon_client::gfx::pack_draw::EntitySpan>>,
     /// Which entity this frame's entity vertices belong to (`Frame::entity_motion`).
     entity_motion: std::cell::RefCell<Vec<(u32, u64)>>,
@@ -2524,15 +2521,6 @@ struct Game<'a> {
     skin_frame: std::cell::RefCell<horizon_client::gfx::entity_skin::SkinFrame>,
     /// The glowing entities' silhouettes this frame (game/glowing.rs).
     glowing_vertices: std::cell::RefCell<Vec<Vertex>>,
-    /// The shader pack's entity and block entity ids, while one draws entities.
-    pack_ids: Option<shader_packs::PackIds>,
-    /// The pack the renderer is making on its own thread: its ids, set once it draws.
-    pack_making: Option<shader_packs::Making>,
-    /// The shader pack and profile the renderer's pack was loaded for (`shader_pack_inputs`).
-    shader_choice: Option<(String, String)>,
-    /// The pack-crash marker has been looked at this run: a build that is under way writes it,
-    /// and looking again would take a running build for the crash it guards against.
-    pack_guard_checked: bool,
     /// The HUD's vertex buffer, kept from the last frame (`HudBatch::new_with`): the HUD is
     /// rebuilt every frame, and a fresh vector would grow back to the same size each time.
     hud_reuse: horizon_client::hud::HudReuse,
@@ -2988,8 +2976,6 @@ struct Game<'a> {
     recipe_tables: native_recipes::RecipeTables,
     /// The item panel beside container screens (`game/native_panel.rs`).
     panel: native_panel::Panel,
-    /// Horizon's own shader pack, while one is picked (`game/native_shaders.rs`).
-    native_shaders: native_shaders::NativeShaders,
     /// The items native client mods claim and the events they haven't polled (game/native_claimed_items.rs).
     native_input: native_claimed_items::ModInput,
     /// The native lifecycle bookkeeping.
@@ -10774,7 +10760,6 @@ impl Game<'_> {
         self.prepare_entity_culling(camera);
         self.prepare_trims();
         self.begin_skinning();
-        self.mark_entity(out.len(), "minecraft:entity_flame");
         // One scan for both passes that draw them (block entities below and the
         // overlay near the end of this function).
         let cracks = self.cracks(camera);
@@ -10876,18 +10861,14 @@ impl Game<'_> {
         }
         laps.lap("eg_fire_stands");
         // `ItemEntityRenderer`.
-        self.mark_entity(out.len(), "minecraft:item");
         self.dropped_item_geometry(camera, alpha, &mut out);
         self.mark_motion(out.len(), 0);
         // `VaultRenderer`.
-        self.mark_entity(out.len(), "");
         self.vault_geometry(camera, alpha, &mut out);
         // `CampfireRenderer`.
-        self.mark_entity(out.len(), "");
         self.campfire_geometry(camera, &mut out);
         self.brushable_geometry(camera, &mut out);
         self.shelf_geometry(camera, &mut out);
-        self.mark_entity(out.len(), "minecraft:ominous_item_spawner");
         self.ominous_item_spawner_geometry(camera, alpha, &mut out);
         laps.lap("eg_items_misc");
         // Mobs and their projectiles (a span each).
@@ -10895,17 +10876,15 @@ impl Game<'_> {
         self.mark_motion(out.len(), 0);
         laps.lap("eg_mobs");
         // In first person only a shader pack's shadow pass draws the player.
-        self.mark_player(out.len(), !self.own_body_in_view());
         let player_start = out.len();
         self.player_model_geometry(camera, self.clock.camera_fraction(), &mut out);
-        // A native pack has no per-entity draws to hide it with: its shadow pass alone gets
-        // the first-person model.
-        if self.pack_ids.is_none() && !self.own_body_in_view() {
+        // Without a pack there are no per-entity draws to hide it with: the shadow pass
+        // alone gets the first-person model.
+        if !self.own_body_in_view() {
             self.shadow_only_vertices
                 .borrow_mut()
                 .extend(out.drain(player_start..));
         }
-        self.mark_entity(out.len(), "minecraft:evoker_fangs");
         self.fangs_geometry(camera, alpha, &mut out);
         self.block_item_display_geometry(camera, alpha, &mut out);
         laps.lap("eg_players");
@@ -10918,7 +10897,6 @@ impl Game<'_> {
         self.see_through_vertices = see_through;
         laps.lap("eg_name_tags");
         // Entity shadows (EntityRenderer.extractShadow), unless the Entity Shadows option is off.
-        self.mark_translucent_entity(out.len(), "minecraft:entity_shadow");
         // With a shader pack on, the pack lights the world: vanilla's round blob would be a
         // second, wrong shadow under every mob (and never turns off by itself). The pack's own
         // shadow pass draws the real ones where it has one, in every dimension it draws.
@@ -11066,24 +11044,8 @@ impl Game<'_> {
             // Entity occlusion is for ordinary entity meshes. Block entities
             // already have section and per-block frustum culling; routing them
             // through the per-vertex occlusion callback both repeats that work
-            // and disables their per-section GPU cache. Shader packs still need
-            // per-entity span marks, so they keep the callback path.
-            if self.pack_ids.is_some() {
-                let section_revision = |pos| r.block_entity_section_revision(pos);
-                static_block_entity_stats = self
-                    .res
-                    .block_entity_render()
-                    .render_with_cache_options_and_callbacks(
-                        &scene,
-                        visible,
-                        block_entity_cache,
-                        r.block_entity_revision(),
-                        Some(&section_revision),
-                        &mut out,
-                        |_, state, start| self.mark_block_entity(start, state),
-                        |_, _, _, _| {},
-                    );
-            } else if (self.entity_culler.is_some() || self.async_entity_culler.is_some())
+            // and disables their per-section GPU cache.
+            if (self.entity_culler.is_some() || self.async_entity_culler.is_some())
                 && !block_entity_cache.any_model_cache()
             {
                 // Entity Culling on and no model cache: a block entity hidden
@@ -11145,7 +11107,6 @@ impl Game<'_> {
                 alpha as f32,
                 &mut out,
             );
-            self.mark_stage(out.len(), "DESTROY");
             for &(pos, stage) in &cracks {
                 let state = self.world.block(pos[0], pos[1], pos[2]);
                 self.res
@@ -11155,7 +11116,6 @@ impl Game<'_> {
         }
         laps.lap("eg_block_entities");
         // Experience orbs (ExperienceOrbRenderer): pulsing billboards from a 4x4 icon sheet.
-        self.mark_entity(out.len(), "minecraft:experience_orb");
         if let Some(r) = self
             .gui
             .atlas
@@ -11225,7 +11185,6 @@ impl Game<'_> {
         }
         laps.lap("eg_orbs");
         // Falling blocks use their baked model, including non-cubic shapes.
-        self.mark_entity(out.len(), "minecraft:falling_block");
         for f in &self.falling {
             // `FallingBlockEntity.blockPosition()`: the cell its feet are in.
             let (x, y, z) = (
@@ -11258,40 +11217,26 @@ impl Game<'_> {
                 vertex.color = horizon_client::hud_layout::multiply(vertex.color, tint);
             }
         }
-        self.mark_entity(out.len(), "");
         self.moving_piston_geometry(camera, alpha, &mut out);
         // LevelRenderer.submitTransientBlocks.
         self.transient_block_geometry(camera, &mut out);
         self.kinetic_geometry(camera, &mut out);
-        self.mark_entity(out.len(), "minecraft:tnt");
         self.tnt_geometry(camera, alpha, &mut out);
-        self.mark_entity(out.len(), "minecraft:painting");
         self.painting_geometry(camera, &mut out);
-        self.mark_entity(out.len(), "minecraft:item_frame");
         self.frame_geometry(camera, &mut out);
-        self.mark_entity(out.len(), "minecraft:armor_stand");
         self.armor_stand_geometry(camera, alpha, &mut out);
         self.cushion_geometry(camera, &mut out);
-        self.mark_entity(out.len(), "minecraft:oak_boat");
         self.boat_geometry(camera, alpha, &mut out);
-        self.mark_entity(out.len(), "minecraft:minecart");
         self.cart_geometry(camera, alpha, &mut out);
         // Beams: `gbuffers_beaconbeam`, not a block entity's program (5.4 has no stage for them).
-        self.mark_stage(out.len(), "NONE");
         self.beacon_geometry(camera, alpha, &mut out);
-        self.mark_entity(out.len(), "minecraft:fishing_bobber");
         self.fishing_geometry(camera, alpha, &mut out);
-        self.mark_entity(out.len(), "minecraft:leash_knot");
         self.leash_geometry(camera, alpha, &mut out);
-        self.mark_entity(out.len(), "minecraft:trident");
         self.trident_geometry(camera, alpha, &mut out);
-        self.mark_entity(out.len(), "minecraft:firework_rocket");
         self.rocket_geometry(camera, alpha, &mut out);
-        self.mark_entity(out.len(), "minecraft:splash_potion");
         self.thrown_potion_geometry(camera, alpha, &mut out);
         laps.lap("eg_objects");
         // Particles (ParticleEngine.extract): camera-facing quads.
-        self.mark_stage(out.len(), "PARTICLES");
         let world = &self.world;
         self.particles.render(
             camera,
@@ -11303,7 +11248,6 @@ impl Game<'_> {
         );
         laps.lap("eg_particles");
         // Breaking progress overlays (destroy_stage_0..9): ours and the other players'.
-        self.mark_stage(out.len(), "DESTROY");
         for &(pos, stage) in &cracks {
             let o = (glam::DVec3::new(f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2]))
                 - camera)
@@ -14210,7 +14154,6 @@ impl Game<'_> {
             .clone()
             .ok_or("no window for graphics recovery")?;
         log::warn!("Horizon: rebuilding the renderer after graphics device loss");
-        self.shader_pack_lost_device();
         // Drop the old surface and device before opening another on this window.
         let mut old = self
             .renderer
@@ -14230,7 +14173,7 @@ impl Game<'_> {
             None,
             self.settings.horizon.api,
             self.settings.horizon.translucent_batching,
-            shader_packs::picked_pack_draws_flat(&self.settings),
+            false,
         )?;
         renderer.screenshot = screenshot;
         renderer.screenshot_result = screenshot_result;
@@ -14244,7 +14187,6 @@ impl Game<'_> {
         self.pending_uploads.clear();
         let context = self.worker_context();
         self.streaming.reload_resources(&mut self.world, context);
-        self.native_shaders = Default::default();
         self.apply_ui_settings();
         log::info!("Horizon: graphics device recovered; rebuilding world meshes");
         Ok(())
@@ -14264,7 +14206,7 @@ impl Game<'_> {
             None,
             self.settings.horizon.api,
             self.settings.horizon.translucent_batching,
-            shader_packs::picked_pack_draws_flat(&self.settings),
+            false,
         )
     }
     fn apply_settings(&mut self) {
@@ -14304,13 +14246,13 @@ impl Game<'_> {
         );
         self.apply_ui_settings();
     }
-    /// The sprite layers a shader pack draws in the translucent pass: every section is meshed
-    /// again when they change.
-    pub(super) fn set_translucent_layers(&mut self, layers: Vec<bool>) {
-        if *layers != *self.streaming.translucent_layers {
-            self.streaming.translucent_layers = layers.into();
-            self.all_sections_changed();
-        }
+    /// The world's resolution, of the screen's: exactly what the player chose.
+    pub(super) fn world_scale(&self) -> f32 {
+        self.settings.horizon.resolution_scale as f32 / 100.0
+    }
+    /// Whether the game's vignette draws (the option alone: no pack can turn it off now).
+    pub(super) fn vignette_shown(&self) -> bool {
+        self.settings.vignette
     }
     /// `LevelExtractor.allChanged`: every loaded section is rebuilt.
     fn all_sections_changed(&mut self) {
@@ -14374,8 +14316,7 @@ impl Game<'_> {
         // The 32x32 direction table supports at most a 15-block radius.
         let radius = self.settings.weather_radius.clamp(0, 15);
         let eye = camera.to_array();
-        // A shader pack draws its own weather, with the pack's own projection and fades.
-        let view = self.view_frustum.as_ref().filter(|_| self.pack_ids.is_none());
+        let view = self.view_frustum.as_ref();
         let mut rain = Vec::new();
         let mut snow_vertices = Vec::new();
         // Saturation keeps extreme camera coordinates from overflowing the loop.
@@ -16021,10 +15962,8 @@ impl Game<'_> {
             let start = entities.len();
             entities.extend(dragon);
             if body > 0 {
-                self.mark_entity_part(start, "minecraft:ender_dragon", false);
             }
             if entities.len() > start + body {
-                self.mark_entity_part(start + body, "minecraft:dragon_fireball", false);
             }
             // Its eyes and death rays are additive geometry the pack would not draw either.
             // They join the entities as translucent geometry, where the pack shades them.
@@ -16036,7 +15975,6 @@ impl Game<'_> {
                 let start = entities.len();
                 entities.extend_from_slice(&additive);
                 additive.clear();
-                self.mark_entity_part(start, "minecraft:ender_dragon", true);
             }
         }
         let (celestial, stars) = if title {
@@ -16081,10 +16019,8 @@ impl Game<'_> {
             let start = entities.len();
             let (crystals, eyes) = self.end_geometry(camera, &mut entities);
             if crystals > 0 {
-                self.mark_entity_part(start, "minecraft:end_crystal", false);
             }
             if eyes > 0 {
-                self.mark_entity_part(start + crystals, "minecraft:eye_of_ender", false);
             }
         }
         let weather = if !title && self.dim == Dim::Overworld && self.settings.horizon.weather {
@@ -16101,11 +16037,7 @@ impl Game<'_> {
         } else {
             self.gather_dynamic_lights(camera, alpha);
         }
-        let pack_inputs = if title {
-            Default::default()
-        } else {
-            self.shader_pack_inputs(camera, alpha as f32, &sky)
-        };
+        let pack_inputs = Default::default();
         // Map textures and font glyphs changed while building this frame's
         // geometry (game/maps.rs, world text) upload with this batch; draining
         // map_patches any earlier leaves them a frame behind.
@@ -19129,10 +19061,6 @@ impl<'a> Game<'a> {
             skin_models: Default::default(),
             skin_frame: Default::default(),
             glowing_vertices: Default::default(),
-            pack_ids: None,
-            pack_making: None,
-            shader_choice: None,
-            pack_guard_checked: false,
             hud_reuse: Default::default(),
             draws_trial_at: None,
             draws_trial_baseline: 0.0,
@@ -19415,7 +19343,6 @@ impl<'a> Game<'a> {
             mods: Default::default(),
             recipe_tables: Default::default(),
             panel: Default::default(),
-            native_shaders: Default::default(),
             native_input: Default::default(),
             native_lifecycle: Default::default(),
             native_net: Default::default(),
@@ -20307,7 +20234,7 @@ fn load_resources(
     // server thread's (horizon_threads::jobs), sized before any world opens.
     horizon_threads::jobs::configure(threads);
     horizon_client::sprites::set_texture_budget(settings.horizon.texture_budget_mib);
-    horizon_client::sprites::set_labpbr_maps(shader_packs::picks_native_pack(settings));
+    horizon_client::sprites::set_labpbr_maps(false);
     // Stage A: the menu bundle (atlas and panorama). With a loading screen it is
     // published at once so the title screen can appear while the world bundle
     // loads; the synchronous launch instead carries it in `Loaded`.
@@ -21905,7 +21832,7 @@ fn loading_frame_due(_last: Option<Instant>) -> Option<Instant> {
                 loaded.renderer_cpu,
                 self.settings.horizon.api,
                 self.settings.horizon.translucent_batching,
-                shader_packs::picked_pack_draws_flat(&self.settings),
+                false,
             )
         })?;
         log::info!(
@@ -23349,22 +23276,6 @@ impl Game<'_> {
             return;
         }
         let now = Instant::now();
-        // A shader pack draws terrain with its own programs, which occlusion culling (indirect
-        // draws of the game's terrain) does not reach: the pair would only cost there. A trial
-        // that began before the pack arrived ends here, back on the platform's choice.
-        if self.pack_ids.is_some() {
-            if self.draws_trial_started.is_some_and(|at| at < Instant::now()) {
-                if let Some(renderer) = self.renderer.as_mut() {
-                    renderer.reset_indirect_draws();
-                }
-                log::info!(
-                    "Horizon renderer: a shader pack took over; back to the platform's section \
-                     draws"
-                );
-            }
-            self.draws_trial_started = Some(Instant::now() + Duration::from_secs(86_400));
-            return;
-        }
         let Some(renderer) = self.renderer.as_mut() else {
             return;
         };
