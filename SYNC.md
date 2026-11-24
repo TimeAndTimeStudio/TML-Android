@@ -225,3 +225,34 @@ common ancestor to merge from. Stable upstream changes that matter to phones are
   pack's shading (the default: cheapest, and what most players want), 1 one flat layer of the
   pack's, 2 the two soft layers. With 1 or 2 the game's mesh is discarded as before; with 0 the
   composite's cloud code never runs.
+
+## Ported after the shader-pack removal (2026-11-24)
+
+Ported by hand from `upstream/main` (no common ancestor to merge from); each is a
+self-contained performance change that applied to this tree:
+
+- `326d390035` — `BiomeZoom::corner_jitter` shares the X and XY prefix mixes.
+- `0a4fe8c212` — `PackedStorage::unpack_into` has fixed-width fast paths (4-9, 15 bits).
+- `5c5e6b1651` — `VoxelShape::join_is_not_empty` merges indices on the stack, heap only past 16 cells.
+- `b17d429e33` — bulk section-major `lod::summarize` (7.22x upstream): uniform light sweep,
+  resolved kept-states, one boundary read per section.
+
+### Upstream performance work still to port (highest first)
+
+Measured gains are upstream's own benchmark numbers; each needs adapting to this tree.
+
+| Commit | Gain | What |
+| --- | --- | --- |
+| `1fd5f925a8` (rest) | +6.6% forest, -119..263 MB | precomputed `BakedModel` `cull_mask` in the mesher |
+| `eee912b040` | +4.3..8.4% RD16 | spatial front-to-back meshlet clustering in the mesher |
+| `ba54be7849` (rest) | +7.6..8.9% RD16 | `glyph_scratch`, inline `DrawnKey` for the HUD |
+| `d41da14ca2` | +2.6..7.9% RD16 | `terrain.wgsl` RGSS/vertex ALU, single-gradient solid finish |
+| `e549bffef3` | +3.6..8.9% RD16 | reverse-Z sky pass after solid terrain |
+| `432d764acb` | +22.6..37.7% stress BE | single-pass block-entity prep, pre-baked shulkers |
+| `9ba83fa92f` | +144% stress items | static item-model resolution cache, zero-alloc item prep |
+| `5cbec47ee2` | +4.2% stress mobs | per-frame entity/mob/item render-prep allocations |
+| `cbac118119` | 92x | `PendingUploads` priority queue, batched `Job::Free` |
+| `8c27fbd2a0` | +2.0..3.8% RD32 | O(1) calm-frame LOD uploads, COW dispatch snapshots |
+| `e8618f82ba` | +6.0..10.0% | `ChunkMap` toroidal cache kept hot |
+| `d8f558197d` | +8.7..11.6% RD32 | conservative reversed-Z Hi-Z pyramid occlusion culling |
+| `5db9bc3f45` | +3.6% stress items | inline single-box `VoxelShape`, O(1) collide fast path |
