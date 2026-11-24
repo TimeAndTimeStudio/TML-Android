@@ -19,7 +19,7 @@ impl Game<'_> {
     ) -> Vec<dynamic_light::Colored> {
         // TML has no shader packs, so no pack contributes particle lights or block light
         // colours: only native mods' own visuals light anything.
-        let mut particle_lights: Vec<dynamic_light::Colored> = Vec::new();
+        let mut particle_lights: Vec<([f64; 3], u32, f32, f32)> = Vec::new();
         let Some(player) = self.native_player() else {
             return dynamic_light::select_colored(particle_lights.into_iter(), camera);
         };
