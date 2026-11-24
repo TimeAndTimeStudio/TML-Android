@@ -593,8 +593,7 @@ impl Game<'_> {
     /// Whether the player's own model shows in the world view (its body or,
     /// while invisible, only its armour and held items).
     pub(super) fn player_model_shown(&self) -> bool {
-        // A shader pack's shadow pass draws the player in first person too (shadowPlayer).
-        (self.own_body_in_view() || self.pack_shadow_casters.1)
+        self.own_body_in_view()
             && self
                 .player
                 .as_ref()

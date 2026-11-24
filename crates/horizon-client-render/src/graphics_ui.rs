@@ -667,7 +667,23 @@ impl H {
             }
             H::BatteryMode => labelled("Battery Mode", on_off(g.battery)),
             H::ShadowCache => labelled("Shader Cache", on_off(g.shadow_cache)),
-}
+            H::GraphicsApi => labelled("Graphics API", g.api.label()),
+            // Greyed out where the device can't (`Item::blocked`): Off, as it is there,
+            // while the saved value waits for a device that can.
+            H::TranslucentBatching => labelled(
+                "Translucent Batching",
+                on_off(g.translucent_batching && crate::graphics::translucent_batching_offered()),
+            ),
+            H::Overlay => labelled(
+                "Performance Overlay",
+                match g.overlay {
+                    Overlay::Off => "Off",
+                    Overlay::Fps => "FPS",
+                    Overlay::Graph => "FPS and Graph",
+                    Overlay::Stats => "Full Stats",
+                },
+            ),
+        }
     }
     fn set_slider(self, s: &mut Settings, v: f32) {
         let g = &mut s.horizon;
@@ -706,8 +722,6 @@ impl H {
             s.horizon.preset = preset;
             return;
         }
-        match self {
-}
         let g = &mut s.horizon;
         match self {
             H::FarDetail => {
@@ -784,7 +798,8 @@ impl H {
                     back,
                 )
             }
-}
+            _ => {}
+        }
     }
 }
 fn max_workers() -> u32 {
@@ -824,6 +839,12 @@ impl Item {
                 | H::HdrPaperWhite
                 | H::HdrUiBrightness,
             ) if !s.horizon.hdr => Some("Turn HDR on to use it."),
+            Item::Horizon(H::TranslucentBatching)
+                if !crate::graphics::translucent_batching_offered() =>
+            {
+                Some("Your GPU or graphics API doesn't support it.")
+            }
+            _ => None,
         }
     }
     /// A value stepped between `<` `>`: not a tick box, a slider or a press.
@@ -1845,7 +1866,30 @@ impl GraphicsUi {
                 vec![Action::ButtonClick, Action::Changed]
             }
             Item::Horizon(H::HdrCalibrate) => vec![Action::ButtonClick, Action::Calibrate],
-}
+            Item::Horizon(H::HdrKey) => {
+                vec![
+                    Action::ButtonClick,
+                    Action::BindKey(crate::graphics::HDR_KEY),
+                ]
+            }
+            _ if item.slider(s).is_some() => {
+                self.can_change_value = true;
+                // A press on the track sets the value there; on the name, only focuses.
+                match at {
+                    Some((x, cols)) if x >= cols.track().0 => {
+                        self.dragging = Some(item);
+                        item.set_slider(s, cols.slider_at(x));
+                        vec![Action::SliderDrag]
+                    }
+                    _ => Vec::new(),
+                }
+            }
+            _ => {
+                self.can_change_value = false;
+                item.cycle(s, back, framebuffer);
+                vec![Action::ButtonClick, Action::Changed]
+            }
+        }
     }
     /// Lets go of a slider (true: it plays its click) or the scrollbar.
     pub fn release(&mut self) -> bool {

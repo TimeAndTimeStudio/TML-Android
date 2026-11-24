@@ -2040,10 +2040,7 @@ pub struct OptionsUi {
     pub stack: Vec<Page>,
     scroll: f32,
     pub(crate) dragging: Option<Opt>,
-    /// The shader pack option whose slider is held, and the handle's own position: it follows
-    /// the pointer while the option takes the nearest of its values.
-    shader_dragging: Option<(String, f32)>,
-    /// Shift is held during the click (it resets a shader pack option to its default).
+    /// Shift is held during the click (it resets an option to its default).
     pub shift: bool,
     /// The pressed slider's own position (`AbstractSliderButton.value`) and
     /// when it last moved: the handle follows the pointer while the option
@@ -2126,8 +2123,6 @@ pub struct OptionsUi {
     /// The list's rows as last laid out: each row's top and bottom (GUI
     /// pixels), for the narration's row under the mouse.
     row_bands: Vec<[f32; 2]>,
-    /// The Shader Packs page's chosen pack's profiles ("" first: its defaults).
-    shader_profiles: Vec<String>,
     /// Whether Options opens Skin Customization: the game's options do; the menus before the
     /// game, which can't put a skin on, keep vanilla's greyed button.
     pub skin_page: bool,
@@ -2191,7 +2186,6 @@ impl Default for OptionsUi {
             stack: vec![Page::Main],
             scroll: 0.0,
             dragging: None,
-            shader_dragging: None,
             shift: false,
             slider_value: None,
             scrollbar_drag_y: None,
@@ -2234,7 +2228,6 @@ impl Default for OptionsUi {
             framebuffer: [1280, 720],
             split_guest: false,
             row_bands: Vec::new(),
-            shader_profiles: Vec::new(),
             skin_page: false,
             profile_name: None,
             profile_key: None,
@@ -2409,12 +2402,6 @@ enum Row {
 /// A widget's tooltip (`setTooltip`), unwrapped: drawn while hovered, and
 /// its narration's hint.
 fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
-    let pack_text = match &wd.kind {
-        _ => None,
-    };
-    if let Some(text) = pack_text {
-        return (!text.is_empty()).then(|| Text::literal(text));
-    }
     let WKind::Button { act, .. } = &wd.kind else {
         let WKind::Slider { opt, .. } = &wd.kind else {
             return None;
@@ -2990,7 +2977,8 @@ impl OptionsUi {
                     self.calibration = Some(crate::hdr_calibration::Calibration::new(s));
                     self.push(Page::HdrCalibration);
                 }
-}
+                Action::Done => events.extend(self.back(s)),
+            }
         }
         events
     }
@@ -4734,10 +4722,11 @@ impl OptionsUi {
                 out[list_start..].iter_mut().for_each(|w| w.list = true);
                 let folder = match page {
                     Page::Mods => Some(("horizon.mods.open_folder", Act::OpenModFolder)),
+                    Page::Skin if self.skin_page => Some(("Open Skin Folder", Act::OpenSkinFolder)),
                     _ => None,
                 };
                 if let Some((label, act)) = folder {
-                    // Android's way to find mods, resource packs and shader packs.
+                    // Android's way to find mods and resource packs.
                     let shelf = catalog_shelf(page).filter(|_| self.catalog_buttons);
                     let (open_w, catalog) =
                         crate::pack_screen::open_folder_slot(cx - 154.0, shelf.is_some());
@@ -5070,7 +5059,116 @@ impl OptionsUi {
                         narrate_widget(n, s, wd, hover, list_key, framebuffer);
                     });
                 }
-}
+                WKind::Text {
+                    text,
+                    color,
+                    centered,
+                } => {
+                    if text.is_empty() {
+                        batch.fill(atlas, wd.x, wd.y, wd.w, wd.h, *color);
+                    } else if *centered {
+                        let tw = atlas.font.width_text(text);
+                        if is_controls && wd.list {
+                            // Sleek Flat Dark header pill card for category headers
+                            let cw = (tw + 36.0).clamp(240.0, 320.0);
+                            let cx = wd.x + ((wd.w - cw) / 2.0).floor();
+                            let cy = wd.y - 4.0;
+                            let ch = 17.0;
+                            batch.fill(atlas, cx, cy, cw, ch, rgba(32, 35, 48, 220));
+                            batch.fill(atlas, cx, cy, cw, 1.0, rgba(255, 255, 255, 22));
+                            batch.fill(atlas, cx, cy + ch - 1.0, cw, 1.0, rgba(255, 255, 255, 14));
+                            // Left accent indicator bar
+                            batch.fill(atlas, cx, cy, 3.0, ch, rgba(154, 134, 255, 255));
+                            // Right decorative accent pip
+                            batch.fill(atlas, cx + cw - 12.0, cy + 7.0, 6.0, 2.0, rgba(154, 134, 255, 160));
+                        } else if is_controls && !wd.list && wd.y < top {
+                            // Top screen title badge for TML controls
+                            let badge_w = 32.0;
+                            let badge_x = wd.x + ((wd.w - tw) / 2.0).floor() - badge_w - 6.0;
+                            if badge_x > 8.0 {
+                                batch.fill(atlas, badge_x, wd.y - 1.0, badge_w, 11.0, rgba(91, 63, 214, 230));
+                                batch.fill(atlas, badge_x, wd.y - 1.0, badge_w, 1.0, rgba(154, 134, 255, 180));
+                                batch.fill(atlas, badge_x, wd.y + 10.0, badge_w, 1.0, rgba(154, 134, 255, 180));
+                                batch.fill(atlas, badge_x, wd.y - 1.0, 1.0, 11.0, rgba(154, 134, 255, 180));
+                                batch.fill(atlas, badge_x + badge_w - 1.0, wd.y - 1.0, 1.0, 11.0, rgba(154, 134, 255, 180));
+                                batch.text_styled(
+                                    atlas,
+                                    &Text::literal("TML"),
+                                    badge_x + 6.0,
+                                    wd.y,
+                                    rgba(255, 255, 255, 255),
+                                    true,
+                                );
+                            }
+                        }
+                        if wd.list && *color == u32::MAX {
+                            crate::widgets::narratable(|| {
+                                let x = wd.x + ((wd.w - tw) / 2.0).floor();
+                                crate::widgets::Narratable::text(
+                                    text.plain(),
+                                    [x - 4.0, wd.y - 4.0, tw + 8.0, 17.0],
+                                )
+                                .key(crate::widgets::key_of(&(list_key, wd.row)))
+                                .child_of(list_key, wd.row)
+                            });
+                        }
+                        batch.text_styled(
+                            atlas,
+                            text,
+                            wd.x + ((wd.w - tw) / 2.0).floor(),
+                            wd.y,
+                            *color,
+                            true,
+                        );
+                    } else {
+                        if is_controls && wd.list && *color == 0xFFA0_A0A0 {
+                            // Informational note / callout card
+                            let cw = 320.0;
+                            let cx = wd.x + ((wd.w - cw) / 2.0).floor();
+                            let cy = wd.y - 3.0;
+                            let ch = 15.0;
+                            batch.fill(atlas, cx, cy, cw, ch, rgba(22, 28, 42, 190));
+                            batch.fill(atlas, cx, cy, 2.0, ch, rgba(88, 101, 242, 220));
+                            batch.fill(atlas, cx, cy, cw, 1.0, rgba(88, 101, 242, 40));
+                            batch.fill(atlas, cx, cy + ch - 1.0, cw, 1.0, rgba(88, 101, 242, 40));
+                            batch.fill(atlas, cx + cw - 1.0, cy, 1.0, ch, rgba(88, 101, 242, 40));
+                        }
+                        batch.text_styled(atlas, text, wd.x, wd.y, *color, true);
+                    }
+                }
+                WKind::LanguageRow {
+                    label, selected, ..
+                } => {
+                    let rect = [wd.x, wd.y, wd.w, wd.h];
+                    crate::widgets::record_as(
+                        &label.plain(),
+                        rect,
+                        true,
+                        crate::widgets::Kind::Row,
+                    );
+                    crate::widgets::target_as(rect, crate::widgets::Kind::Row);
+                    if *selected || is_focused {
+                        batch.fill(atlas, wd.x, wd.y, wd.w, wd.h, u32::MAX);
+                        batch.fill(
+                            atlas,
+                            wd.x + 1.0,
+                            wd.y + 1.0,
+                            wd.w - 2.0,
+                            wd.h - 2.0,
+                            rgba(0, 0, 0, 255),
+                        );
+                    }
+                    let tw = atlas.font.width_text(label);
+                    batch.text_styled(
+                        atlas,
+                        label,
+                        wd.x + ((wd.w - tw) / 2.0).floor(),
+                        wd.y + 2.0 + 7.0 - 4.0,
+                        u32::MAX,
+                        true,
+                    );
+                }
+            }
             if wd.list && (wd.y < top || wd.y + wd.h > bottom) {
                 batch.clip_since(start, 0.0, top, w, bottom);
             }
@@ -5436,6 +5534,7 @@ impl OptionsUi {
                             }
                             self.push(p)
                         }
+                        Act::Done => events.extend(self.back(s)),
                         Act::Cycle(opt) => {
                             events.extend(self.cycle_option(s, opt, right, framebuffer));
                         }
@@ -5510,8 +5609,119 @@ impl OptionsUi {
                         Act::NativeGame(act) => events.push(Event::NativeGame(act)),
                         Act::OpenModFolder => events.push(Event::OpenModFolder),
                         Act::OpenCatalog(shelf) => events.push(Event::OpenCatalog(shelf)),
+                        Act::CustomButtons => {
+                            self.push(Page::CustomButtons);
+                            events.push(Event::OpenCustomButtons);
+                        }
+                        Act::CustomAdd => {
+                            self.custom_add(s);
+                        }
+                        Act::CustomEdit(id) => {
+                            let line =
+                                s.custom_buttons.iter().find(|b| b.id == id).map(|b| {
+                                    match &b.action {
+                                        crate::settings::CustomAction::Send(line) => line.as_str(),
+                                        crate::settings::CustomAction::Key(_)
+                                        | crate::settings::CustomAction::Input(_) => "",
+                                    }
+                                });
+                            self.custom_send.set_value(line.unwrap_or_default());
+                            self.custom_send.focused = false;
+                            self.push(Page::CustomButton(id));
+                        }
+                        Act::CustomDelete(id) => {
+                            own_buttons::remove_all(id);
+                            s.custom_buttons.retain(|b| b.id != id);
+                            events.push(Event::CustomButtons);
+                        }
+                        Act::CustomToggle(id) => {
+                            if let Some(b) = s.custom_buttons.iter_mut().find(|b| b.id == id) {
+                                b.toggle = !b.toggle;
+                            }
+                        }
+                        Act::CustomKey(id, name) => {
+                            if let Some(b) = s.custom_buttons.iter_mut().find(|b| b.id == id) {
+                                b.action = crate::settings::CustomAction::Key(name.to_owned());
+                            }
+                            self.custom_send.set_value("");
+                            self.custom_send.focused = false;
+                            events.extend(self.back(s));
+                        }
+                        Act::CustomInput(id, name) => {
+                            if let Some(b) = s.custom_buttons.iter_mut().find(|b| b.id == id) {
+                                b.action = crate::settings::CustomAction::Input(name.to_owned());
+                            }
+                            self.custom_send.set_value("");
+                            self.custom_send.focused = false;
+                            events.extend(self.back(s));
+                        }
+                        Act::CustomModKey(id, i, k) => {
+                            let key = s.mods.installed.get(i).and_then(|m| {
+                                let [name, _, default] = m.native.as_ref()?.keys.get(k)?;
+                                let chosen = s.mods.keys.get(&m.id).and_then(|c| c.get(name));
+                                Some(chosen.unwrap_or(default).clone())
+                            });
+                            if let Some(key) = key
+                                && let Some(b) = s.custom_buttons.iter_mut().find(|b| b.id == id)
+                            {
+                                b.action = crate::settings::CustomAction::Input(key);
+                            }
+                            self.custom_send.set_value("");
+                            self.custom_send.focused = false;
+                            events.extend(self.back(s));
+                        }
+                        Act::CustomIcon(id, icon) => {
+                            if let Some(b) = s.custom_buttons.iter_mut().find(|b| b.id == id) {
+                                b.icon = icon.map(str::to_owned);
+                                if b.image {
+                                    b.image = false;
+                                    own_buttons::remove(id);
+                                }
+                            }
+                            events.extend(self.back(s));
+                        }
+                        Act::CustomDraw(id) => {
+                            if id < own_buttons::SLOTS {
+                                self.painter
+                                    .open(atlas, s.custom_buttons.iter().find(|b| b.id == id));
+                            } else {
+                                self.painter.open_pressed(atlas, id);
+                            }
+                            self.push(Page::CustomDraw(id));
+                        }
+                        Act::CanvasClear => self.painter.clear(),
                         Act::CanvasPlate => self.painter.plate(atlas),
                         Act::CanvasImport(id) => events.push(Event::ImportButtonImage(id)),
+                        Act::TouchLayout => events.push(Event::TouchLayout),
+                        Act::BedrockInventory => s.bedrock_inventory = !s.bedrock_inventory,
+                        Act::Credits => events.push(Event::Credits),
+                        Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
+                        Act::NextSkin => {
+                            let page = &mut self.skin;
+                            page.choice.file =
+                                crate::own_skin::next(&page.files, page.choice.file.as_deref());
+                            page.warning = None;
+                            page.actions.push(SkinAction::Choice(page.choice.clone()));
+                        }
+                        Act::SkinModel => {
+                            let page = &mut self.skin;
+                            page.choice.slim = !page.choice.slim;
+                            page.actions.push(SkinAction::Choice(page.choice.clone()));
+                        }
+                        Act::PickSkin => self.skin.actions.push(SkinAction::PickFile),
+                        Act::ElyBySkins => {
+                            let page = &mut self.skin;
+                            page.elyby = !page.elyby;
+                            page.actions.push(SkinAction::ElyBy(page.elyby));
+                        }
+                        Act::OpenSkinFolder => self.skin.actions.push(SkinAction::OpenFolder),
+                        Act::UploadSkin => {
+                            let page = &mut self.skin;
+                            page.warning = None;
+                            page.actions.push(SkinAction::Upload(page.choice.clone()));
+                        }
+                        Act::ElySkinSite => self.skin.actions.push(SkinAction::ElySite),
+                        Act::ToggleRecording => events.push(Event::ToggleRecording),
                         Act::DiagnosticsExport => events.push(Event::DiagnosticsExport),
                         Act::DiagnosticsOpen => events.push(Event::DiagnosticsOpen),
                         Act::DiagnosticsRecord => events.push(Event::DiagnosticsRecord),
@@ -5540,7 +5750,7 @@ impl OptionsUi {
         }
         // AbstractSliderButton suppresses the press sound and plays once on
         // release, even if the pointer has left the widget or its value stayed.
-        let slider = self.dragging.take().is_some() | self.shader_dragging.take().is_some();
+        let slider = self.dragging.take().is_some();
         let graphics_slider = self.graphics.release();
         let calibration_slider = self.calibration.as_mut().is_some_and(|c| c.release());
         let split_drop = self.split_setup.release();
@@ -5866,8 +6076,6 @@ impl OptionsUi {
         self.settings_search.focused = false;
         self.language_search.focused = false;
         self.can_change_value = false;
-        match page {
-}
         events.push(Event::Changed);
         if self.stack.is_empty() {
             events.push(Event::Close);
@@ -6452,7 +6660,39 @@ impl OptionsUi {
                         Act::NativeGame(act) => events.push(Event::NativeGame(act)),
                         Act::OpenModFolder => events.push(Event::OpenModFolder),
                         Act::OpenCatalog(shelf) => events.push(Event::OpenCatalog(shelf)),
-}
+                        Act::Credits => events.push(Event::Credits),
+                        Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
+                        Act::ToggleRecording => events.push(Event::ToggleRecording),
+                        Act::DiagnosticsExport => events.push(Event::DiagnosticsExport),
+                        Act::DiagnosticsOpen => events.push(Event::DiagnosticsOpen),
+                        Act::DiagnosticsRecord => events.push(Event::DiagnosticsRecord),
+                        Act::DiagnosticsGpu => events.push(Event::DiagnosticsGpu),
+                        Act::ExportRepro => events.push(Event::ExportRepro),
+                        // Starling's pages answer taps only.
+                        Act::CustomButtons
+                        | Act::CustomAdd
+                        | Act::CustomEdit(_)
+                        | Act::CustomDelete(_)
+                        | Act::CustomKey(..)
+                        | Act::CustomInput(..)
+                        | Act::CustomModKey(..)
+                        | Act::CustomIcon(..)
+                        | Act::CustomDraw(_)
+                        | Act::CustomToggle(_)
+                        | Act::CanvasClear
+                        | Act::CanvasPlate
+                        | Act::CanvasImport(_)
+                        | Act::TouchLayout
+                        | Act::BedrockInventory
+                        | Act::NextSkin
+                        | Act::SkinModel
+                        | Act::PickSkin
+                        | Act::OpenSkinFolder
+                        | Act::ElyBySkins
+                        | Act::UploadSkin
+                        | Act::ElySkinSite => {}
+                        Act::None => {}
+                    }
                     return events;
                 }
                 Some(FocusId::Lang(code)) => {

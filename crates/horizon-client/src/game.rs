@@ -2991,9 +2991,6 @@ struct Game<'a> {
     entity_culler: Option<horizon_client::entity_culling::Culler>,
     async_entity_culler: Option<entity_culling::AsyncCuller>,
     async_entity_culling_failed: bool,
-    /// `Renderer::pack_shadow_casters` for this frame's entities: (keep what the culler hides,
-    /// build the player's model in first person); (false, false) without a shader pack.
-    pack_shadow_casters: (bool, bool),
     /// A scripted flight from the control socket (`fly`).
     flight: Option<control::Flight>,
     /// The running agent action from the control socket (game/agent.rs).
@@ -10897,14 +10894,9 @@ impl Game<'_> {
         self.see_through_vertices = see_through;
         laps.lap("eg_name_tags");
         // Entity shadows (EntityRenderer.extractShadow), unless the Entity Shadows option is off.
-        // With a shader pack on, the pack lights the world: vanilla's round blob would be a
-        // second, wrong shadow under every mob (and never turns off by itself). The pack's own
-        // shadow pass draws the real ones where it has one, in every dimension it draws.
-        let pack_shadows = self
-            .renderer
-            .as_ref()
-            .is_some_and(|r| r.shader_pack_active());
-        let shadow_sprite = (self.settings.entity_shadows && !pack_shadows)
+        let shadow_sprite = self
+            .settings
+            .entity_shadows
             .then(|| self.gui.atlas.sprites.get("misc/shadow").copied())
             .flatten();
         if let Some(sprite) = shadow_sprite {
@@ -14173,7 +14165,6 @@ impl Game<'_> {
             None,
             self.settings.horizon.api,
             self.settings.horizon.translucent_batching,
-            false,
         )?;
         renderer.screenshot = screenshot;
         renderer.screenshot_result = screenshot_result;
@@ -14206,7 +14197,6 @@ impl Game<'_> {
             None,
             self.settings.horizon.api,
             self.settings.horizon.translucent_batching,
-            false,
         )
     }
     fn apply_settings(&mut self) {
@@ -15954,28 +15944,8 @@ impl Game<'_> {
         if !title {
             let mut dragon = Vec::new();
             self.dragon_geometry(camera, alpha, &mut dragon, &mut additive);
-            let body = dragon.len();
             self.dragon_fireball_geometry(camera, alpha, &mut dragon);
-            // The dragon is not made by `entity_geometry`, which marks the other entities for a
-            // shader pack's `gbuffers_entities`: its vertices are marked here, or the pack would
-            // paint over it with its deferred pass and it would be invisible (Solas).
-            let start = entities.len();
             entities.extend(dragon);
-            if body > 0 {
-            }
-            if entities.len() > start + body {
-            }
-            // Its eyes and death rays are additive geometry the pack would not draw either.
-            // They join the entities as translucent geometry, where the pack shades them.
-            let pack_draws = self
-                .renderer
-                .as_ref()
-                .is_some_and(|r| r.pack_draws_entities());
-            if pack_draws && !additive.is_empty() {
-                let start = entities.len();
-                entities.extend_from_slice(&additive);
-                additive.clear();
-            }
         }
         let (celestial, stars) = if title {
             (Vec::new(), None)
@@ -19319,7 +19289,6 @@ impl<'a> Game<'a> {
             entity_culler: None,
             async_entity_culler: None,
             async_entity_culling_failed: false,
-            pack_shadow_casters: (false, false),
             pending_uploads: Vec::new(),
             frame_graph: Default::default(),
             stats_overlay: Default::default(),
@@ -20725,7 +20694,6 @@ fn build_renderer(
     prepared: Option<horizon_client::gfx::PreparedTextures>,
     api: horizon_client::graphics::GraphicsApi,
     translucent_batching: bool,
-    shader_pack: bool,
 ) -> Result<Renderer> {
     let assets = &pack.render;
     let atlas = &gui.atlas;
@@ -20777,7 +20745,6 @@ fn build_renderer(
         previous,
         api,
         translucent_batching,
-        shader_pack,
     ))?;
     #[cfg(target_os = "android")]
     if let Some(marker) = start_marker {
@@ -20852,8 +20819,6 @@ fn loading_renderer(
         None,
         previous,
         api,
-        // It draws no terrain.
-        false,
         false,
     ))?;
     if let Some(atlas) = atlas {
@@ -21829,7 +21794,6 @@ fn loading_frame_due(_last: Option<Instant>) -> Option<Instant> {
                 loaded.renderer_cpu,
                 self.settings.horizon.api,
                 self.settings.horizon.translucent_batching,
-                false,
             )
         })?;
         log::info!(

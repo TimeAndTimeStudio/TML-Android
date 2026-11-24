@@ -2148,7 +2148,6 @@ impl Renderer {
         previous: Option<&Self>,
         api: GraphicsApi,
         _translucent_batching: bool,
-        shader_pack: bool,
     ) -> Result<Self> {
         let Opened {
             instance,
@@ -4007,18 +4006,12 @@ impl Renderer {
         crate::graphics::offer_translucent_batching(batchable);
         // TML always batches translucent quads where the device can: there is no switch.
         let translucent_batching = batchable;
-        // A new renderer runs no shader pack: the game loads the picked one on its
-        // first world frame (`shader_pack`: the picked pack draws flat, a `shaders/`
-        // pack or one of Horizon's own with `[shadow]`), and the frames before it, the
-        // level loading screen's among them, keep the layout the sections upload in
-        // (`draw_frame`). It starts as that pack's, a `shaders/` pack taken to draw
-        // terrain: the pack loading keeps it, and only one whose terrain and shadow
-        // pass draw none meshes the sections again.
+        // TML has no shader packs: the sections keep the layout they upload with.
         let (sorted_indices, translucent_arena) = arena::Arena::translucent_arenas(
             &device,
             std::mem::size_of::<TerrainVertex>() as u64,
             flat.is_some(),
-            translucent_split(translucent_batching, flat.is_some(), shader_pack, false),
+            translucent_split(translucent_batching, flat.is_some(), false, false),
         );
         if let (Some(flat), Some(arena)) = (&mut flat, &translucent_arena) {
             flat.set_translucent_page_vertices(arena.page_vertices());
@@ -4809,25 +4802,6 @@ impl Renderer {
     /// frame's `shadow_only` quads.
     pub fn native_shadow(&self) -> bool {
         false
-    }
-    /// Whether the pack drawing now draws entities itself (`gbuffers_entities`): the game then
-    /// marks the entities it makes outside `entity_geometry` (the dragon) for the pack.
-    pub fn pack_draws_entities(&self) -> bool {
-        false
-    }
-
-    /// Whether a shader pack runs now (one of Horizon's own, or a `shaders/` pack): the game
-    /// then leaves out vanilla's round entity shadow, shaders replacing the way the world is
-    /// lit — and drawing their own under the entities when the pack has a shadow pass.
-    pub fn shader_pack_active(&self) -> bool {
-        false
-    }
-    /// What a shader pack's shadow pass draws of the entities this frame: (entities or block
-    /// entities other than the player, so those Horizon's culling hides from the camera are
-    /// kept for it; the local player, so its model is built in first person too). (false,
-    /// false) without a pack or its shadow pass.
-    pub fn pack_shadow_casters(&self) -> (bool, bool) {
-        (false, false)
     }
 
     pub fn has_section(&self, key: SectionKey) -> bool {

@@ -129,7 +129,7 @@ public final class GameFolderChecks {
                     "a folder in it");
             check("starling/resourcepacks".equals(
                     folder.idOf(new File(root, "saves/../resourcepacks"))), "a path with ..");
-            check("starling/shaderpacks".equals(folder.idOf(new File(root, "shaderpacks"))),
+            check("starling/screenshots".equals(folder.idOf(new File(root, "screenshots"))),
                     "one not made yet");
             check(folder.idOf(work) == null, "the folder above");
             check(folder.idOf(new File(work, "rootx")) == null, "a name that starts the same");
@@ -164,7 +164,7 @@ public final class GameFolderChecks {
         }
         List<String> top = folder.children("starling");
         check(top.contains("starling/options.txt") && top.contains("starling/saves"), "listed");
-        for (String made : new String[] {"resourcepacks", "shaderpacks"}) {
+        for (String made : new String[] {"resourcepacks"}) {
             check(top.contains("starling/" + made), made + " is made to copy into");
         }
         check(!top.contains("starling/accounts") && !top.contains("starling/native")

@@ -327,7 +327,6 @@ impl Game<'_> {
                     Some(textures),
                     self.settings.horizon.api,
                     self.settings.horizon.translucent_batching,
-                    false,
                 )
             })
             .transpose()
