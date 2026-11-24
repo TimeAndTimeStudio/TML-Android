@@ -5024,7 +5024,6 @@ impl OptionsUi {
                             ui::sprite_sized(batch, atlas, icon, wd.x, wd.y, wd.w, wd.h, u32::MAX)
                         }
                         None => {
-                            let label = fitted.as_ref().map_or(label, |f| &f.0);
                             ui::button(batch, atlas, wd.x, wd.y, wd.w, wd.h, label, *active, hover);
                             if is_controls {
                                 if *act == Act::TouchLayout || *act == Act::CustomAdd {
