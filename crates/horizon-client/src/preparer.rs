@@ -282,38 +282,6 @@ pub fn skin() -> Option<PathBuf> {
     }
 }
 
-/// Clears a shader pack a save still names: TML ships no shader packs.
-pub fn put_shader_pack(game_folder: &Path) {
-    // TML has no shader packs: nothing is put in `shaderpacks/`, and a save that still names
-    // one starts with shaders Off instead of being quietly moved to another look.
-    let graphics_file = game_folder.join("horizon-graphics.txt");
-    let Ok(content) = std::fs::read_to_string(&graphics_file) else {
-        return;
-    };
-    if !content
-        .lines()
-        .any(|line| line.trim_start().starts_with("pickedShaderPack:"))
-    {
-        return;
-    }
-    let lines: Vec<String> = content
-        .lines()
-        .map(|line| {
-            if line.trim_start().starts_with("pickedShaderPack:") {
-                "pickedShaderPack:".to_string()
-            } else {
-                line.to_string()
-            }
-        })
-        .collect();
-    if let Err(e) = std::fs::write(&graphics_file, lines.join("\n") + "\n") {
-        log::warn!(
-            "TML: the removed shader pack could not be cleared in {}: {e}",
-            graphics_file.display()
-        );
-    }
-}
-
 /// Bundled resource packs the app carries (e.g. Faithful 32x),
 /// put in `resourcepacks/` of the game folder so the player can choose to activate them.
 pub fn put_resource_packs(game_folder: &Path) {

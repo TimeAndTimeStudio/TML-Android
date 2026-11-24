@@ -451,7 +451,6 @@ fn done_title(kind: Kind) -> &'static str {
         Kind::World => "World imported",
         Kind::ResourcePack => "Resource pack imported",
         Kind::DataPack => "Data pack imported",
-        Kind::ShaderPack => "Shader pack imported",
         Kind::Mod | Kind::NativeMod => "Mod imported",
         Kind::Skin => "Skin imported",
         Kind::Resources => "Minecraft resources imported",
@@ -596,7 +595,7 @@ const BANG: &[&str] = &[
 fn icon(kind: Kind) -> &'static [&'static str] {
     match kind {
         Kind::World => WORLD,
-        Kind::ResourcePack | Kind::DataPack | Kind::ShaderPack => PACK,
+        Kind::ResourcePack | Kind::DataPack => PACK,
         Kind::Mod | Kind::NativeMod => GEAR,
         Kind::Skin => FACE,
         Kind::Resources | Kind::Bedrock | Kind::Unknown => BOX,

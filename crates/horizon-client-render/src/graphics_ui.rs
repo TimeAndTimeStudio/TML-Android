@@ -666,7 +666,7 @@ impl H {
                 Text::translate("Shortcut: %s", &[crate::keybinds::display_name(&g.hdr_key)])
             }
             H::BatteryMode => labelled("Battery Mode", on_off(g.battery)),
-            H::ShadowCache => labelled("Shader Cache", on_off(g.shadow_cache)),
+            H::ShadowCache => labelled("Shadow Cache", on_off(g.shadow_cache)),
             H::GraphicsApi => labelled("Graphics API", g.api.label()),
             // Greyed out where the device can't (`Item::blocked`): Off, as it is there,
             // while the saved value waits for a device that can.

@@ -19,7 +19,6 @@ pub enum Kind {
     ResourcePack,
     /// A pack with `data/` and no `assets/`: for `datapacks/`, chosen when a world is created.
     DataPack,
-    ShaderPack,
     World,
     Mod,
     /// A native mod (`horizon-native.json`): for `horizon-native-mods/`, compiled from there.
@@ -95,14 +94,6 @@ pub fn classify(path: &Path) -> (Kind, String) {
         };
         return (kind, prefix);
     }
-    // OptiFine and Iris packs: a `shaders/` folder.
-    if let Some(prefix) = names.iter().find_map(|n| match n.split_once('/') {
-        Some(("shaders", _)) => Some(String::new()),
-        Some((top, rest)) if rest.starts_with("shaders/") => Some(format!("{top}/")),
-        _ => None,
-    }) {
-        return (Kind::ShaderPack, prefix);
-    }
     (Kind::Unknown, String::new())
 }
 
@@ -170,11 +161,10 @@ pub fn install(path: &Path, name: &str, places: &Places) -> Result<Installed, St
     let fail = |e: io::Error| format!("could not import {name}: {e}");
     let mut made = None;
     let message = match kind {
-        Kind::ResourcePack | Kind::DataPack | Kind::ShaderPack => {
+        Kind::ResourcePack | Kind::DataPack => {
             let (folder, what) = match kind {
                 Kind::ResourcePack => ("resourcepacks", "Resource pack"),
-                Kind::DataPack => ("datapacks", "Data pack"),
-                _ => ("shaderpacks", "Shader pack"),
+                _ => ("datapacks", "Data pack"),
             };
             let dir = places.game.join(folder);
             fs::create_dir_all(&dir).map_err(fail)?;
@@ -187,8 +177,7 @@ pub fn install(path: &Path, name: &str, places: &Places) -> Result<Installed, St
             }
             let turn_on = match kind {
                 Kind::ResourcePack => "turn it on in Options > Resource Packs",
-                Kind::DataPack => "pick it in Create New World > More > Data Packs",
-                _ => "pick it in Video Settings > Shader Pack",
+                _ => "pick it in Create New World > More > Data Packs",
             };
             format!("{what} \"{title}\" added: {turn_on}")
         }
@@ -500,18 +489,6 @@ mod tests {
                 ],
                 Kind::World,
                 "My World/",
-            ),
-            (
-                "bsl.zip",
-                &[("shaders/composite.fsh", b"")],
-                Kind::ShaderPack,
-                "",
-            ),
-            (
-                "deep.zip",
-                &[("BSL/shaders/final.fsh", b"")],
-                Kind::ShaderPack,
-                "BSL/",
             ),
             (
                 "res.zip",
