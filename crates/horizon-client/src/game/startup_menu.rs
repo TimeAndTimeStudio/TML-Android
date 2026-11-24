@@ -798,11 +798,8 @@ impl Loading {
                     }
                 }
                 Event::TouchLayout => self.open_menu_touch_editor(),
-                // TML has no shader packs: there is nothing to list.
-                Event::ListShaderPacks => {}
                 // Before the game starts the mods are listed as it starts (`start_mods`).
                 Event::ListMods => {}
-                Event::ShaderPack => self.save_menu_settings(),
                 Event::OpenCustomButtons => {
                     self.settings.custom_buttons = super::touch::saved_custom_buttons();
                 }
@@ -818,19 +815,6 @@ impl Loading {
                 // The canvas takes the picture from the inbox itself (`menu_button_image`).
                 Event::ImportButtonImage(_) => {
                     horizon_client::platform::pick_file();
-                }
-                // TML has no shader packs: there are no pack options.
-                Event::OpenShaderOptions => {}
-                Event::ShaderOptions => {}
-                Event::NativePackOptions(i) => {
-                    if let Some(pack) = self.settings.shader_packs.get(i) {
-                        pack.save_values(&Game::shader_packs_dir());
-                    }
-                }
-                Event::OpenShaderPackFolder => {
-                    let dir = Game::shader_packs_dir();
-                    let _ = std::fs::create_dir_all(&dir);
-                    packs::open_folder(&dir);
                 }
                 Event::Credits => {
                     if let Some(gui) = &self.gui {

@@ -8449,7 +8449,7 @@ impl Game<'_> {
             .add(atlas, line, None, ChatSource::Client, self.ticks, focused);
     }
     /// The instance (game) folder, which its players share: `saves/`,
-    /// `resourcepacks/`, `shaderpacks/` and `horizon-mods/` are in it, and the
+    /// `resourcepacks/` and `horizon-mods/` are in it, and the
     /// title's screens create worlds and read packs there. A world's own
     /// `datapacks/` is in that world's folder (`saves/<world>/datapacks`).
     /// The folder the game runs in (`--player-dir` moves a player's options

@@ -141,7 +141,6 @@ public final class GameFolderProvider extends DocumentsProvider {
         switch (extension) {
             case "zip":
             case "hmod":
-            case "hshader":
                 return "application/zip";
             case "json":
                 return "application/json";

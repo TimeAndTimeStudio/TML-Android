@@ -97,24 +97,6 @@ pub enum H {
     HdrUiBrightness,
     BatteryMode,
     ShadowCache,
-    /// Picks a shader pack and opens shader options.
-    /// Direct tick-box selection for Off (disable shaders).
-    /// Direct tick-box selection for the bundled phone-first pack, TML Visuals Lite.
-    /// Direct tick-box selection for custom shader packs.
-    /// Detailed pack settings screen (shaders.properties / [[pages]]).
-    /// The quality profile of the active shader pack.
-    /// Opens the shaderpacks folder in the system file manager.
-    /// Toggles terrain & entity shadows in shader pack.
-    /// Dynamic handheld lighting.
-    /// Ambient occlusion (AO) in shader pack.
-    /// Sun rays / volumetric light shafts.
-    /// Volumetric clouds in shader pack.
-    /// Wind waving on plants and water.
-    /// Water wave quality & refraction.
-    /// Bloom & glare intensity.
-    /// Camera motion blur.
-    /// Anti-aliasing (FXAA / TAA).
-    /// Resets all options of active pack to default.
     GraphicsApi,
     TranslucentBatching,
 }
@@ -684,8 +666,24 @@ impl H {
                 Text::translate("Shortcut: %s", &[crate::keybinds::display_name(&g.hdr_key)])
             }
             H::BatteryMode => labelled("Battery Mode", on_off(g.battery)),
-            H::ShadowCache => labelled("Shader Cache", on_off(g.shadow_cache)),
-}
+            H::ShadowCache => labelled("Shadow Cache", on_off(g.shadow_cache)),
+            H::GraphicsApi => labelled("Graphics API", g.api.label()),
+            // Greyed out where the device can't (`Item::blocked`): Off, as it is there,
+            // while the saved value waits for a device that can.
+            H::TranslucentBatching => labelled(
+                "Translucent Batching",
+                on_off(g.translucent_batching && crate::graphics::translucent_batching_offered()),
+            ),
+            H::Overlay => labelled(
+                "Performance Overlay",
+                match g.overlay {
+                    Overlay::Off => "Off",
+                    Overlay::Fps => "FPS",
+                    Overlay::Graph => "FPS and Graph",
+                    Overlay::Stats => "Full Stats",
+                },
+            ),
+        }
     }
     fn set_slider(self, s: &mut Settings, v: f32) {
         let g = &mut s.horizon;
@@ -724,8 +722,6 @@ impl H {
             s.horizon.preset = preset;
             return;
         }
-        match self {
-}
         let g = &mut s.horizon;
         match self {
             H::FarDetail => {
@@ -802,7 +798,8 @@ impl H {
                     back,
                 )
             }
-}
+            _ => {}
+        }
     }
 }
 fn max_workers() -> u32 {
@@ -842,6 +839,12 @@ impl Item {
                 | H::HdrPaperWhite
                 | H::HdrUiBrightness,
             ) if !s.horizon.hdr => Some("Turn HDR on to use it."),
+            Item::Horizon(H::TranslucentBatching)
+                if !crate::graphics::translucent_batching_offered() =>
+            {
+                Some("Your GPU or graphics API doesn't support it.")
+            }
+            _ => None,
         }
     }
     /// A value stepped between `<` `>`: not a tick box, a slider or a press.
@@ -922,7 +925,34 @@ impl Item {
     fn touched(self, s: &mut Settings) {
         let presetless = matches!(
             self,
-);
+            Item::Horizon(
+                H::Preset
+                    | H::BlueMapAutoDetect
+                    | H::BlueMapRadius
+                    | H::Overlay
+                    | H::ScreenshotQuality
+                    | H::Pacing
+                    | H::PresentMode
+                    | H::Workers
+                    | H::FrameGeneration
+                    | H::BatteryMode
+                    | H::ShadowCache
+                    | H::GraphicsApi
+            ) | Item::Vanilla(
+                Opt::GuiScale
+                    | Opt::Fullscreen
+                    | Opt::Vsync
+                    | Opt::MaxFps
+                    | Opt::Fov
+                    | Opt::Gamma
+                    | Opt::InactivityFps
+                    | Opt::ViewBobbing
+                    | Opt::ChunkFade
+                    | Opt::Vignette
+                    | Opt::Autosave
+                    | Opt::AttackIndicator
+            )
+        );
         if !presetless {
             s.horizon.preset = Preset::Custom;
         }
@@ -972,11 +1002,6 @@ pub enum Action {
     BindKey(&'static str),
     /// Start HDR calibration.
     Calibrate,
-    /// Open the shader packs options screen.
-    /// Open detailed shader pack options screen.
-    /// Open the shaderpacks folder in the file manager.
-    /// Active shader pack changed.
-    /// Player switched to the shaders tab.
     Done,
 }
 
@@ -1841,7 +1866,30 @@ impl GraphicsUi {
                 vec![Action::ButtonClick, Action::Changed]
             }
             Item::Horizon(H::HdrCalibrate) => vec![Action::ButtonClick, Action::Calibrate],
-}
+            Item::Horizon(H::HdrKey) => {
+                vec![
+                    Action::ButtonClick,
+                    Action::BindKey(crate::graphics::HDR_KEY),
+                ]
+            }
+            _ if item.slider(s).is_some() => {
+                self.can_change_value = true;
+                // A press on the track sets the value there; on the name, only focuses.
+                match at {
+                    Some((x, cols)) if x >= cols.track().0 => {
+                        self.dragging = Some(item);
+                        item.set_slider(s, cols.slider_at(x));
+                        vec![Action::SliderDrag]
+                    }
+                    _ => Vec::new(),
+                }
+            }
+            _ => {
+                self.can_change_value = false;
+                item.cycle(s, back, framebuffer);
+                vec![Action::ButtonClick, Action::Changed]
+            }
+        }
     }
     /// Lets go of a slider (true: it plays its click) or the scrollbar.
     pub fn release(&mut self) -> bool {

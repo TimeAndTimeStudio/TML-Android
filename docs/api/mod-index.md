@@ -1,8 +1,7 @@
 # The registry index and `.hpack`
 
 Horizon's registry lists what is made for Horizon and reviewed: content mods (`.hmod`), native mods (`.hnmod`,
-[native-mods.md](../native-mods.md)), modpacks (`.hpack`), resource packs and Horizon shader packs (`.hshader`,
-[shaders.md](../shaders.md)). A project is listed by a reviewed pull request in
+[native-mods.md](../native-mods.md)), modpacks (`.hpack`) and resource packs. A project is listed by a reviewed pull request in
 [horizon-rust/horizon-mods](https://github.com/horizon-rust/horizon-mods) that links its GitHub repository; its versions are
 the repository's GitHub releases, read and checked by the registry's CI with no pull request and no review per version. The launcher and the
 website read one file, `index.json`, which that repository's CI builds. The Rust types and every check below are
@@ -202,11 +201,8 @@ How the repository runs (its workflows are in `.github/workflows/`):
 - **Taking a file down** is a pull request adding it to `revoked.toml`. Removing an entry outright (a test, a project
   nobody installed) fails `registry review` on purpose and needs an administrator's merge.
 
-Kinds open to submissions: `mod` (content only), `native-mod`, `modpack`, `resourcepack`, `shader`. A shader pack (`.hshader`) passes
-`horizon_shader_api::check`, the check the game runs before it loads one (`horizon-shader check`, [shaders.md](../shaders.md)):
-every stage validated by naga and translated for Vulkan, Metal and DirectX 12; its manifest's id, version and shader
-API line are its facts. Iris and OptiFine packs are for the Modrinth browser. A new kind gets its own check before it
-opens.
+Kinds open to submissions: `mod` (content only), `native-mod`, `modpack`, `resourcepack`. A new kind gets its own
+check before it opens.
 
 ## Changelog
 

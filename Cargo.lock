@@ -1360,7 +1360,6 @@ dependencies = [
  "horizon-optifine",
  "horizon-protocol",
  "horizon-server-files",
- "horizon-shader-api",
  "horizon-shaders",
  "horizon-telemetry",
  "horizon-theme",
@@ -1442,7 +1441,6 @@ dependencies = [
  "horizon-prepare",
  "horizon-protocol",
  "horizon-server-files",
- "horizon-shader-api",
  "horizon-shaders",
  "horizon-telemetry",
  "horizon-theme",
@@ -1494,7 +1492,6 @@ dependencies = [
  "horizon-narrator",
  "horizon-optifine",
  "horizon-protocol",
- "horizon-shader-api",
  "horizon-shaders",
  "horizon-telemetry",
  "horizon-theme",
@@ -1607,7 +1604,6 @@ dependencies = [
 name = "horizon-mods"
 version = "0.1.0"
 dependencies = [
- "horizon-shader-api",
  "log",
  "minisign-verify",
  "serde",
@@ -1738,20 +1734,6 @@ dependencies = [
  "horizon-world",
  "log",
  "ureq",
-]
-
-[[package]]
-name = "horizon-shader-api"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "naga",
- "png",
- "serde",
- "serde_json",
- "sha2",
- "toml",
- "zip",
 ]
 
 [[package]]

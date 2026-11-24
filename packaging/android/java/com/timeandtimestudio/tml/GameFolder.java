@@ -33,7 +33,6 @@ final class GameFolder {
             "backups",
             "resourcepacks",
             "datapacks",
-            "shaderpacks",
             "screenshots",
             "servers.dat",
                     "horizon-graphics.txt",
@@ -48,7 +47,7 @@ final class GameFolder {
     private static final List<String> LOGS = Arrays.asList("logs", "crash-reports");
 
     /** Made when the app's own files are listed: nothing can be added at their top. */
-    private static final String[] FOLDERS = {"saves", "resourcepacks", "shaderpacks"};
+    private static final String[] FOLDERS = {"saves", "resourcepacks"};
 
     /** How many taken names a new document tries before it gives up. */
     private static final int NAME_TRIES = 1000;

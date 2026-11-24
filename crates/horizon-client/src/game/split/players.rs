@@ -324,8 +324,6 @@ impl Split<'_> {
             None,
             host.settings.horizon.api,
             host.settings.horizon.translucent_batching,
-            // The pack its own game loads, from its profile.
-            false,
         )?);
         guest.window = Some(window);
         guest.world_renderer_ready = true;

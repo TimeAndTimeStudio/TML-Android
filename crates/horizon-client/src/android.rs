@@ -376,7 +376,6 @@ const PLAYER_FILES: &[&str] = &[
     "backups",
     "resourcepacks",
     "datapacks",
-    "shaderpacks",
     "screenshots",
     "servers.dat",
     "horizon-graphics.txt",
@@ -395,7 +394,6 @@ const NO_MEDIA: &[&str] = &[
     "backups",
     "resourcepacks",
     "datapacks",
-    "shaderpacks",
     "assets",
     "minecraft",
     "resources",
@@ -1451,7 +1449,6 @@ pub fn main(app: AndroidApp) {
             log::info!("{note}");
         }
         // Read from the APK's assets, which the app above opens.
-        crate::preparer::put_shader_pack(&home);
         crate::preparer::put_resource_packs(&home);
         // Preload touch controls early on Android so layouts & settings are warm before the UI opens
         let _ = horizon_client_render::android_controls::Settings::load();

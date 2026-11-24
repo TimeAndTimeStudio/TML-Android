@@ -378,8 +378,6 @@ fn snapshot_cell(value: f64) -> Option<i32> {
 
 impl Game<'_> {
     pub(super) fn prepare_entity_culling(&mut self, camera: glam::DVec3) {
-        // TML has no shader packs: nothing draws a pack shadow pass.
-        self.pack_shadow_casters = (false, false);
         let at = camera.to_array().map(|v| v.floor() as i32);
         let eligible = self.settings.horizon.entity_culling
             != horizon_client::graphics::EntityCullingMode::Off

@@ -695,30 +695,6 @@ pub struct Graphics {
     /// batches where the device can (`translucent_batching_offered`): there is no switch, and
     /// the saved value is kept only so old options files parse. Its key is `batchTranslucent`.
     pub translucent_batching: bool,
-    /// The shader pack picked in `shaderpacks/` (`shader_pack_list`); empty: none. Its key is
-    /// not `shaderPack`, which versions before the clean-room rewrite saved and which stays
-    /// ignored.
-    pub shader_pack: String,
-    /// The picked `shaders/` pack's profile (`profile.<name>`): empty for
-    /// `HORIZON_SHADER_PROFILE`'s, `default` for the pack's own defaults.
-    pub shader_profile: String,
-}
-/// A pack made to be cheap, which keeps the player's resolution and draws no depth first:
-/// TML Visuals Lite, Starling Visuals and MakeUp Ultra Fast.
-pub fn light_shader_pack(name: &str) -> bool {
-    let name = name.replace(['-', '_', ' '], "").to_ascii_lowercase();
-    name.starts_with("starlingvisuals")
-        || name.starts_with("tmlvisualslite")
-        || name.starts_with("makeup")
-}
-
-impl Graphics {
-    /// No shader pack, ever: TML ships without the shader-pack system, so the game's own
-    /// pipeline is the only one that draws. The saved `shader_pack`/`shader_profile` (and
-    /// `HORIZON_SHADER_PACK`) are kept only so old saves parse; they select nothing.
-    pub fn shader_choice(&self) -> Option<(String, String)> {
-        None
-    }
 }
 impl Default for Graphics {
     fn default() -> Self {
@@ -766,8 +742,6 @@ impl Default for Graphics {
             shadow_cache: true,
             api: GraphicsApi::Auto,
             translucent_batching: true,
-            shader_pack: String::new(),
-            shader_profile: String::new(),
         }
     }
 }
@@ -924,12 +898,6 @@ impl Graphics {
                 "shadowCache" => g.shadow_cache = flag(g.shadow_cache),
                 "batchTranslucent" => g.translucent_batching = flag(g.translucent_batching),
                 "graphicsApi" => g.api = GraphicsApi::from_name(value).unwrap_or_default(),
-                "pickedShaderPack" => g.shader_pack = value.to_owned(),
-                // Starling's pick before it took this page's key (`off`: none).
-                "shaders" if g.shader_pack.is_empty() && value != "off" => {
-                    g.shader_pack = value.to_owned()
-                }
-                "shadersProfile" => g.shader_profile = value.to_owned(),
                 "overlay" => {
                     g.overlay = match value {
                         "fps" => Overlay::Fps,
@@ -945,7 +913,7 @@ impl Graphics {
     }
     pub fn serialize(&self) -> String {
         let mut text = format!(
-            "preset:{}\nlodDistance:{}\nfarDetail:{}\ncaveCulling:{}\nentityCulling:{}\nleafCulling:{}\nblockEntityCacheShulkerBoxes:{}\nblockEntityCacheSigns:{}\nblockEntityCacheDecoratedPots:{}\nblockEntityCacheBells:{}\nblockEntityCacheChests:{}\nblockEntityCacheBanners:{}\nblockEntityCacheCopperGolemStatues:{}\nchunkUpdates:{}\nuploadBudgetKiB:{}\ntextureBudgetMiB:{}\nsky:{}\nfog:{}\nweather:{}\nanimatedTextures:{}\nditherCutoutMips:{}\npresentMode:{}\nframePacing:{}\nworkers:{}\noverlay:{}\nresolutionScale:{}\nfxaa:{}\ntaa:{}\nupscaling:{}\nscreenshotQuality:{}\nframeGeneration:{}\nhdr:{}\nhdrPaperWhite:{}\nhdrPeak:{}\nhdrBlackLevel:{}\nhdrUiBrightness:{}\nhdrKey:{}\nbatteryMode:{}\nshadowCache:{}\ngraphicsApi:{}\npickedShaderPack:{}\nshadersProfile:{}\nbatchTranslucent:{}\n",
+            "preset:{}\nlodDistance:{}\nfarDetail:{}\ncaveCulling:{}\nentityCulling:{}\nleafCulling:{}\nblockEntityCacheShulkerBoxes:{}\nblockEntityCacheSigns:{}\nblockEntityCacheDecoratedPots:{}\nblockEntityCacheBells:{}\nblockEntityCacheChests:{}\nblockEntityCacheBanners:{}\nblockEntityCacheCopperGolemStatues:{}\nchunkUpdates:{}\nuploadBudgetKiB:{}\ntextureBudgetMiB:{}\nsky:{}\nfog:{}\nweather:{}\nanimatedTextures:{}\nditherCutoutMips:{}\npresentMode:{}\nframePacing:{}\nworkers:{}\noverlay:{}\nresolutionScale:{}\nfxaa:{}\ntaa:{}\nupscaling:{}\nscreenshotQuality:{}\nframeGeneration:{}\nhdr:{}\nhdrPaperWhite:{}\nhdrPeak:{}\nhdrBlackLevel:{}\nhdrUiBrightness:{}\nhdrKey:{}\nbatteryMode:{}\nshadowCache:{}\ngraphicsApi:{}\nbatchTranslucent:{}\n",
             self.preset.name(),
             self.lod_distance,
             self.far_detail.name(),
@@ -994,8 +962,6 @@ impl Graphics {
             bool_text(self.battery),
             bool_text(self.shadow_cache),
             self.api.name(),
-            self.shader_pack,
-            self.shader_profile,
             bool_text(self.translucent_batching),
         );
         text += &self.blue_map.serialize();
@@ -1265,8 +1231,6 @@ mod tests {
             shadow_cache: true,
             api: GraphicsApi::Dx12,
             translucent_batching: false,
-            shader_pack: "Golden Hour".into(),
-            shader_profile: "LOW".into(),
         };
         assert_eq!(Graphics::parse(&g.serialize()), g);
         for mode in EntityCullingMode::ALL {

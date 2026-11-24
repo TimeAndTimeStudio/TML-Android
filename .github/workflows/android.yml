@@ -2,7 +2,7 @@ name: android
 
 on:
   push:
-    branches: [main, master, android, starling]
+    branches: [main, master, android, starling, shader-ui-removal]
     tags: ['v*']
   pull_request:
   workflow_dispatch:

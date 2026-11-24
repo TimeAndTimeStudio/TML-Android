@@ -247,11 +247,6 @@ pub struct Settings {
     pub extras: crate::extras::Extras,
     /// The Horizon mods turned on (`horizon-mods.txt`), all off by default.
     pub mods: crate::mod_list::ModList,
-    /// The packs in `shaderpacks/`, listed when the Shader Packs page opens; the pick is
-    /// `horizon.shader_pack`.
-    pub shader_packs: Vec<crate::shader_pack_list::Entry>,
-    /// The picked pack's options while its Shader Options page is open.
-    pub shader_options: Option<crate::shader_options::ShaderOptions>,
     /// The touch layout's own buttons while the Custom Buttons page shows them.
     pub custom_buttons: Vec<CustomButton>,
 }
@@ -339,8 +334,6 @@ impl Default for Settings {
             controller: Default::default(),
             extras: Default::default(),
             mods: Default::default(),
-            shader_packs: Vec::new(),
-            shader_options: None,
             custom_buttons: Vec::new(),
         }
     }
@@ -532,8 +525,6 @@ impl Settings {
             controller: Default::default(),
             extras: Default::default(),
             mods: Default::default(),
-            shader_packs: Vec::new(),
-            shader_options: None,
             custom_buttons: Vec::new(),
             auto_jump: f.bool("autoJump"),
             language: f.string("lang"),

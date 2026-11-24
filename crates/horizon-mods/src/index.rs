@@ -50,8 +50,8 @@ pub enum Kind {
     Modpack,
     /// A resource pack (`.zip` with `pack.mcmeta`) made or tested for Horizon.
     ResourcePack,
-    /// A Horizon shader pack (`.hshader`, the native WGSL format of
-    /// docs/shaders.md; not the shaders/-folder packs, which stay on Modrinth).
+    /// A Horizon shader pack (`.hshader`). TML has no shader packs: kept so indexes that
+    /// still list one parse, and refused when one is built or installed.
     Shader,
     Other(String),
 }
@@ -75,7 +75,7 @@ impl Kind {
             Kind::NativeMod => Some("hnmod"),
             Kind::Modpack => Some("hpack"),
             Kind::ResourcePack => Some("zip"),
-            Kind::Shader => Some(horizon_shader_api::EXTENSION),
+            Kind::Shader => Some("hshader"),
             Kind::Other(_) => None,
         }
     }
@@ -540,13 +540,6 @@ impl Facts {
                 names(&self.capabilities)
             ),
             Kind::Modpack => format!("its {} isn't what the index lists", modpack::MANIFEST),
-            Kind::Shader => format!(
-                "its {} ({} {}, shader API {}) isn't what the index lists",
-                horizon_shader_api::MANIFEST,
-                self.id.as_deref().unwrap_or("?"),
-                self.version.as_deref().unwrap_or("?"),
-                self.api
-            ),
             _ => format!("its pack format {} isn't what the index lists", self.api),
         })
     }
@@ -554,8 +547,8 @@ impl Facts {
 
 /// Reads and checks a file as its kind: a mod's manifest and content, a
 /// modpack's manifest and overrides, a resource pack's `pack.mcmeta` and
-/// paths, a shader pack's `horizon_shader_api::check` (the game's own). Kinds
-/// this build doesn't know are refused: their checks come with their formats.
+/// paths. Kinds this build doesn't know, and shader packs, which TML no
+/// longer has, are refused.
 pub fn inspect(kind: &Kind, path: &Path) -> Result<Facts, String> {
     match kind {
         Kind::NativeMod => {
@@ -608,23 +601,7 @@ pub fn inspect(kind: &Kind, path: &Path) -> Result<Facts, String> {
             api: check_resource_pack(path)?,
             ..Facts::default()
         }),
-        Kind::Shader => {
-            let pack = horizon_shader_api::Pack::read(path)?;
-            if let Err(problems) = horizon_shader_api::check(&pack) {
-                let lines: Vec<String> = problems.iter().map(ToString::to_string).collect();
-                return Err(format!(
-                    "the shader pack fails its check:\n{}",
-                    lines.join("\n")
-                ));
-            }
-            let m = pack.manifest;
-            Ok(Facts {
-                id: Some(m.id),
-                version: Some(m.version),
-                api: m.api,
-                ..Facts::default()
-            })
-        }
+        Kind::Shader => Err("this Horizon has no shader packs".into()),
         Kind::Other(name) => Err(format!("this Horizon can't read a {name} yet")),
     }
 }
@@ -678,7 +655,8 @@ fn check_resource_pack(path: &Path) -> Result<String, String> {
 /// formats.
 pub fn open(kind: &Kind) -> Result<(), String> {
     match kind {
-        Kind::Mod | Kind::NativeMod | Kind::Modpack | Kind::ResourcePack | Kind::Shader => Ok(()),
+        Kind::Mod | Kind::NativeMod | Kind::Modpack | Kind::ResourcePack => Ok(()),
+        Kind::Shader => Err("the registry doesn't take shader packs anymore".into()),
         Kind::Other(name) => Err(format!("the registry doesn't take {name} yet")),
     }
 }
