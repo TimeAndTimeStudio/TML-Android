@@ -348,8 +348,11 @@ self-contained performance change that applied to this tree:
   included.
 
 Already present in this tree (verified by their code being in `HEAD`): `ab44288662` (cloud
-`CloudMask` rebuild) and most of `e349aeccea` (packed light BFS; only upstream's later
-`Light::from_slice` form is absent, this tree keeps `Light::packed`).
+`CloudMask` rebuild), `f43817376a` (the whole bucketed `Uploads` staging ring with
+`bucket_size`/`pick_active`/`pick_free`/`trim_idle` and `create_texture_with_data`, every
+added line already in this tree's `gfx/upload.rs`, so it needs no port), and most of
+`e349aeccea` (packed light BFS; only upstream's later `Light::from_slice` form is absent,
+this tree keeps `Light::packed`).
 
 ### Upstream performance work still to port (highest first)
 
@@ -374,11 +377,10 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `51670062e1` | 1.61x scalar | flat `SplineSampler` arena | needs `sample_with`/`usable_mask`, absent here |
 | `15824fc6f3` | worldgen | structure grid range check | needs `Placement::DimensionOrigin`/`StructureRegistry::origin`, absent here |
 | `ebb6ee7a8a` | server | share encoded chunk bodies | needs `Body::Shared`/`Encoder::bodies_with`, absent here |
-| `f43817376a` | -13..-25 MB | bucketed `Uploads` staging ring | 200-line rewrite of `gfx/upload.rs`, deferred |
 | `3fa98d1bd8`, `f71ddcce2d`, `533bb2cdd3`, `ad406095d4`, `dedb0375a4` | font/noise/particles/sprites | large multi-region rewrites | diverge from this tree's older forms, deferred |
 | `e0c1233a27` | -22..-33 MB | zero-alloc `EntityBatch` LUT + Schwartzian sort | needs the 16-material/native-terrain overlay refactor; this tree's `entity_batch.rs` is the older 10-material, 400-line form |
 | `d939fd378d` | +2.5..3.3% RD | faster `ChunkMap` lookups | needs the toroidal-grid/hash refactor in `world.rs`/`chunk_map.rs`, absent here |
-| `8e0b8ff5a5` | +1.1..4.3% RD16 | caching lightmap and skipping unchanged per-frame GPU uploads | 488 lines through this tree's older `gfx.rs` (8 conflict regions); needs the lightmap/upload refactor |
+| `8e0b8ff5a5` | +1.1..4.3% RD16 | caching lightmap and skipping unchanged per-frame GPU uploads | lightmap `LightmapKey` cache, the hand/crosshair global-upload skip and the sunrise-fan skip are ported (see the list above); the sprite tick cache and the remaining per-frame upload skip still need this tree's older `gfx.rs` (488 lines, 8 conflict regions) |
 | `cb2132352e`, `0c2cff4f46` | +FPS / +SoA | `ColumnSlab`, SoA `Resident`/pages | large rewrites of `gfx/occlusion.rs`, `gfx/pages.rs`, `gfx/resident.rs` against this tree's older forms |
 | `0f0dea6114`, `96d758bf25` | +1.4..2.0% RD / mesh lock | streaming mesh-job pooling | `0f0dea6114` needs `mesh_settings()`/`submit_mesh_candidates` and `hz_laps`, absent here; `96d758bf25` fixes a queue lock held across job building, which this tree never does (`submit` takes the lock per job and builds each region before it) |
 | `5aeaafa6e5` | world | remap section palette slots at pack time | this tree's `PalettedContainer::to_nbt` predates the per-cell dedup the `aliases` table optimises (it copies the palette and words as-is), so the change would replace a cheaper save with a remap |
