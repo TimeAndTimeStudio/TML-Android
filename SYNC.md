@@ -291,6 +291,10 @@ self-contained performance change that applied to this tree:
   `message` field); the upstream test's `Message::wrapped` assertions are replaced by an
   equivalence test against the old prepend-then-truncate reference (passes with the other 22 chat
   tests).
+- `12cd1ed563` (partial) — `LerpSampler::sample_volume` hoists the `Values` enum dispatch out of
+  the per-cell loop (one match per volume, four constant/buffer combinations). The
+  `IntervalSelectSampler` half of the commit (classify each cell once, folding the needed-mask
+  pass) needs the sampler `needed`-mask refactor this tree does not have, so it is left out.
 
 Already present in this tree (verified by their code being in `HEAD`): `ab44288662` (cloud
 `CloudMask` rebuild) and most of `e349aeccea` (packed light BFS; only upstream's later
@@ -315,7 +319,7 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `8c27fbd2a0` | +2.0..3.8% RD32 | O(1) calm-frame LOD uploads, COW dispatch snapshots | modifies `gfx/world_handover.rs`, absent here; 1405 lines against a diverged `lod.rs`/`mesher.rs` |
 | `e8618f82ba` | +6.0..10.0% | `ChunkMap` toroidal cache kept hot | the toroidal grid came from an earlier absent commit; `chunk_map.rs` here is 385 lines against 1165 pre-image |
 | `d8f558197d` | +8.7..11.6% RD32 | conservative reversed-Z Hi-Z pyramid occlusion culling | adds `gfx/gpu_culling.rs` and `gfx/gpu_occlusion.wgsl`, absent here |
-| `12cd1ed563` | density | `IntervalSelectSampler` duplicate threshold scans | needs `sample_with`/`Values`/`needed` sampler refactor, absent here |
+| `12cd1ed563` | density | `IntervalSelectSampler` duplicate threshold scans | LerpSampler half ported; the IntervalSelect half needs the `needed`-mask sampler refactor, absent here |
 | `51670062e1` | 1.61x scalar | flat `SplineSampler` arena | needs `sample_with`/`usable_mask`, absent here |
 | `15824fc6f3` | worldgen | structure grid range check | needs `Placement::DimensionOrigin`/`StructureRegistry::origin`, absent here |
 | `46e0a6942e` | memory | share one structure-mob data read per world | `StructureMobFinalizer` here has no `item_data` field (later upstream refactor) |
@@ -335,7 +339,7 @@ gap without porting the intermediate commit first. The prerequisite is named for
 Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`, `5db9bc3f45`,
 `d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
-`150a1013d2`, `635586ce1b`, `a03f108dbc`.
+`150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half).
 
 The remaining upstream perf commits from the Nov 20-24 window are ~130; the ones not in this
 table all modify files this tree never had (the Nov 23-24 gameplay/render reorganisation), so
