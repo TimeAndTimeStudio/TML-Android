@@ -310,6 +310,15 @@ self-contained performance change that applied to this tree:
   `PalettedContainer`, which has no `aliases` field, so the `aliases = None` line is dropped. The
   upstream test's `last`-cache assertion is dropped (a benign hint) and replaced by a cell-by-cell
   comparison; the test runs inline (this tree has no `chunk/tests.rs`).
+- `4ac255c284` — `write_region_header` builds both header sectors in memory and writes them in one
+  call, shared by `RegionFile::write_header` and `RegionWriter::finish`, and a chunk's length and
+  compression byte are written in one `write_all`. The `region_write_bench` example is included
+  (its `nbt` import moved to `horizon_world::nbt`).
+- `fdf87ca16d` — the pool's scheduler counters (`epoch`, `sleepers`, `far`, `released`, `threads`,
+  each source's `running`, and `quiet` where this tree has it) are wrapped in `Padded`, a
+  `#[repr(align(64))]` cell, so no two share a cache line. Adapted to this tree's `Entry`, which has
+  no `last_job`/`quiet` fields: only `running` is padded. The `padded_counters_bench` example is
+  included.
 
 Already present in this tree (verified by their code being in `HEAD`): `ab44288662` (cloud
 `CloudMask` rebuild) and most of `e349aeccea` (packed light BFS; only upstream's later
@@ -354,7 +363,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
-`c415b158fe`, `92abe36aec`.
+`c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -480,7 +489,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `917f45a488` | partially absent | 6 | 4 | perf(rendering): upload solid_sources by slot for packed flat shader packs (#19605) |
 | `1e1e41d912` | partially absent | 2 | 1 | perf(rendering): with HDR on, the display check no longer stalls the render thread every 2 s (#18609) |
 | `a27fee23ca` | partially absent | 7 | 5 | perf(rendering): worker-thread meshlets, occlusion culling, indirect dispatch and 128-lane mesh shader (#19471) |
-| `4ac255c284` | partially absent | 2 | 1 | perf(saves): batch fresh region file headers and record prefixes (#19928) |
 | `a05c0e5aa0` | partially absent | 5 | 3 | perf(saves): lazily cache canonical section palettes per SaveDir (#19440) |
 | `309b772964` | partially absent | 5 | 3 | perf(saves): share one section palette budget per world and count shared entries once (#19861) |
 | `5b21a55844` | partially absent | 10 | 4 | perf(server): give memory back once a dedicated server is empty (#18290) |
@@ -492,7 +500,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `2798431890` | partially absent | 8 | 3 | perf(shaders): a pack's shadow pass sorts its sections once and draws the solid ones with indirect multi-draws (#19806) |
 | `6fd61f2dcc` | partially absent | 19 | 15 | perf(shaders): compile native shader packs asynchronously and batch option edits (#20601) |
 | `cbac118119` | partially absent | 9 | 6 | perf(streaming): 92x faster PendingUploads priority queue, O(1) settlement checks and batched Job::Free lock (#20473) |
-| `fdf87ca16d` | partially absent | 2 | 1 | perf(threads): pad the pool's scheduler counters onto their own cache lines (#18415) |
 | `e0bbdc1e25` | partially absent | 3 | 1 | perf(ui): a dialog is laid out once per screen size, not every frame (#19237) |
 | `e8618f82ba` | partially absent | 13 | 11 | perf(world): +6.0% to +10.0% FPS (+19.9% village 1% low) by keeping ChunkMap toroidal cache hot via grid_missing counter and pub mutate_chunk (#20195) |
 | `182e08c079` | partially absent | 4 | 1 | perf(world): add O(1) id index and well-known lookup to LiveAttributes (#19077) |
