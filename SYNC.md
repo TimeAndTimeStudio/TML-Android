@@ -321,6 +321,11 @@ self-contained performance change that applied to this tree:
 - `debef4584c` — `tick_remote_entities` builds the orb `followed` list only when the client has
   experience orbs, and the cat `sleepers` list only when a cat is in the level. Adapted to this
   tree's `game/remote.rs` (upstream's `game/network/remote/tick_entities.rs`).
+- `9609bc8ccf` — selector option keys borrow the reader's text with `Cow` instead of always
+  allocating, and `parse_internal`/`into_parsed` avoid the final `Selector::clone` on the public
+  path; `can_use` becomes `option_usable`, which also rejects unknown keys so the separate
+  `OPTIONS.contains` check goes. This fork has no mod system, so the `selector_tokens` lookup the
+  commit also guards is not present to adapt.
 - `fd3b4ff6a3` — a chunk decoder thread now calls `chunk_decoder_current` and stays at the
   ordinary priority below the frame, unless `HORIZON_DECODER_PRIORITY=1` asks for the old raise
   (a parsed-once switch, with a portable parse test and the Windows priority A/B). The
@@ -369,7 +374,6 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `51670062e1` | 1.61x scalar | flat `SplineSampler` arena | needs `sample_with`/`usable_mask`, absent here |
 | `15824fc6f3` | worldgen | structure grid range check | needs `Placement::DimensionOrigin`/`StructureRegistry::origin`, absent here |
 | `ebb6ee7a8a` | server | share encoded chunk bodies | needs `Body::Shared`/`Encoder::bodies_with`, absent here |
-| `9609bc8ccf` | command | borrow unquoted selector option keys | needs mod `selector_tokens` (the mod system is removed in this fork) |
 | `f43817376a` | -13..-25 MB | bucketed `Uploads` staging ring | 200-line rewrite of `gfx/upload.rs`, deferred |
 | `3fa98d1bd8`, `f71ddcce2d`, `533bb2cdd3`, `ad406095d4`, `dedb0375a4` | font/noise/particles/sprites | large multi-region rewrites | diverge from this tree's older forms, deferred |
 | `e0c1233a27` | -22..-33 MB | zero-alloc `EntityBatch` LUT + Schwartzian sort | needs the 16-material/native-terrain overlay refactor; this tree's `entity_batch.rs` is the older 10-material, 400-line form |
@@ -392,7 +396,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
-`07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`.
+`07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -410,7 +414,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `3465b5f7ac` | api/semantics | 1 | 0 | docs(benchmark): the A/B section reads its result with horizon-perf summary (#19745) |
 | `60c8f9d0ef` | api/semantics | 3 | 0 | perf(audio): 13.15x faster mix_buffer (-92.4%) and 4.86x faster SoundEngine::tick (-79.4%) via single-pass mixer (#19535) |
 | `96d758bf25` | api/semantics | 1 | 0 | perf(chunks): build mesh jobs before taking the job queue's lock (#19870) |
-| `9609bc8ccf` | api/semantics | 1 | 0 | perf(command): borrow unquoted selector option keys and avoid Selector::clone in parse (#20713) |
 | `f71ddcce2d` | api/semantics | 1 | 0 | perf(font): LZ4-compressed chunked off-atlas bitmap font strips (#20186) |
 | `3fa98d1bd8` | api/semantics | 1 | 0 | perf(font): compact Unihex HexTable and shared archive cache (~7.4 MB less RAM per table) (#20185) |
 | `fba8c0452c` | api/semantics | 2 | 0 | perf(interface): keep the HUD vertex buffer and clip quads in place (#18010) |
