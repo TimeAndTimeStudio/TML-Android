@@ -56,14 +56,6 @@ impl GradientTable {
     pub fn permutations(&self) -> &[u8; 256] {
         &self.permutations
     }
-
-    fn permute(&self, index: i32) -> i32 {
-        i32::from(self.permutations[(index & 255) as usize])
-    }
-
-    fn gradient(&self, index: i32) -> [f32; 3] {
-        PERLIN_GRADIENTS[(self.permute(index) & 15) as usize]
-    }
 }
 
 // Perlin's 16-direction table includes four repeated directions. Simplex uses
@@ -301,5 +293,260 @@ mod tests {
             .unwrap();
         assert_eq!(nested.range().unwrap(), [0.0; 2]);
         assert!(nested.get3(1.0, 2.0, 3.0).is_nan());
+    }
+}
+
+/// Verbatim reference implementations copied from this tree before the fast-path
+/// optimizations, used solely to prove bit-exact equivalence in tests.
+#[cfg(test)]
+pub(crate) mod reference {
+    use super::{GRADIENTS, GradientTable, PERLIN_GRADIENTS, dot, lerp3, smoothstep, wrap};
+    use crate::geometry::floor_i32;
+
+    fn ref_permute(table: &GradientTable, index: i32) -> i32 {
+        i32::from(table.permutations()[(index & 255) as usize])
+    }
+
+    fn ref_gradient_indices_at(
+        table: &GradientTable,
+        p: i32,
+        q: i32,
+        cell_y: i32,
+        cell_z: i32,
+    ) -> [usize; 8] {
+        let lower = ref_permute(table, p.wrapping_add(cell_y));
+        let upper = ref_permute(table, p.wrapping_add(cell_y).wrapping_add(1));
+        let lower_x = ref_permute(table, q.wrapping_add(cell_y));
+        let upper_x = ref_permute(table, q.wrapping_add(cell_y).wrapping_add(1));
+        let rows = [
+            lower, lower_x, upper, upper_x, lower, lower_x, upper, upper_x,
+        ];
+        std::array::from_fn(|i| {
+            (ref_permute(
+                table,
+                rows[i].wrapping_add(cell_z).wrapping_add((i / 4) as i32),
+            ) & 15) as usize
+        })
+    }
+
+    fn ref_gradients_at(
+        table: &GradientTable,
+        p: i32,
+        q: i32,
+        cell_y: i32,
+        cell_z: i32,
+    ) -> [[f32; 3]; 8] {
+        let mut gradients = [[0.0; 3]; 8];
+        for (gradient, index) in gradients
+            .iter_mut()
+            .zip(ref_gradient_indices_at(table, p, q, cell_y, cell_z))
+        {
+            *gradient = PERLIN_GRADIENTS[index];
+        }
+        gradients
+    }
+
+    fn ref_gradients(table: &GradientTable, cell: [i32; 3]) -> [[f32; 3]; 8] {
+        ref_gradients_at(
+            table,
+            ref_permute(table, cell[0]),
+            ref_permute(table, cell[0].wrapping_add(1)),
+            cell[1],
+            cell[2],
+        )
+    }
+
+    fn ref_corner_values(gradients: [[f32; 3]; 8], point: [f32; 3]) -> [f32; 8] {
+        std::array::from_fn(|i| {
+            dot(
+                gradients[i],
+                [
+                    point[0] - (i & 1) as f32,
+                    point[1] - ((i >> 1) & 1) as f32,
+                    point[2] - ((i >> 2) & 1) as f32,
+                ],
+            )
+        })
+    }
+
+    fn ref_perlin_coordinates(table: &GradientTable, point: [f64; 3]) -> ([i32; 3], [f64; 3]) {
+        let shifted: [f64; 3] = std::array::from_fn(|i| wrap(point[i]) + table.offsets()[i]);
+        let cell = shifted.map(floor_i32);
+        (
+            cell,
+            std::array::from_fn(|i| shifted[i] - f64::from(cell[i])),
+        )
+    }
+
+    fn ref_perlin_sample(
+        table: &GradientTable,
+        cell: [i32; 3],
+        point: [f32; 3],
+        interpolation_y: f32,
+    ) -> f32 {
+        let values = ref_corner_values(ref_gradients(table, cell), point);
+        lerp3(
+            [
+                smoothstep(point[0]),
+                smoothstep(interpolation_y),
+                smoothstep(point[2]),
+            ],
+            values,
+        )
+    }
+
+    pub(super) fn ref_perlin_get3(table: &GradientTable, x: f64, y: f64, z: f64) -> f32 {
+        let (cell, relative) = ref_perlin_coordinates(table, [x, y, z]);
+        let point = relative.map(|v| v as f32);
+        ref_perlin_sample(table, cell, point, point[1])
+    }
+
+    pub(super) fn ref_perlin_get2(table: &GradientTable, x: f64, z: f64) -> f32 {
+        ref_perlin_get3(table, wrap(x), 0.0, wrap(z))
+    }
+
+    fn ref_compute_fudge_y(input_y: f64, relative_y: f64, scale: f64) -> f64 {
+        let limited_y = if input_y >= 0.0 && input_y < relative_y {
+            input_y
+        } else {
+            relative_y
+        };
+        f64::from(floor_i32(limited_y / scale + f64::from(1e-7_f32))) * scale
+    }
+
+    pub(super) fn ref_smeared_get3(
+        table: &GradientTable,
+        fudge_y_scale: f64,
+        x: f64,
+        y: f64,
+        z: f64,
+    ) -> f32 {
+        let (cell, relative) = ref_perlin_coordinates(table, [x, y, z]);
+        let fudge = ref_compute_fudge_y(y, relative[1], fudge_y_scale);
+        ref_perlin_sample(
+            table,
+            cell,
+            [
+                relative[0] as f32,
+                (relative[1] - fudge) as f32,
+                relative[2] as f32,
+            ],
+            relative[1] as f32,
+        )
+    }
+
+    pub(super) fn ref_smeared_get2(
+        table: &GradientTable,
+        fudge_y_scale: f64,
+        x: f64,
+        z: f64,
+    ) -> f32 {
+        ref_smeared_get3(table, fudge_y_scale, wrap(x), 0.0, wrap(z))
+    }
+
+    fn ref_simplex_corner(gradient: usize, point: [f64; 3], radius: f64) -> f64 {
+        let attenuation = radius - point[0] * point[0] - point[1] * point[1] - point[2] * point[2];
+        if attenuation < 0.0 {
+            0.0
+        } else {
+            let squared = attenuation * attenuation;
+            let g = GRADIENTS[gradient];
+            squared
+                * squared
+                * (f64::from(g[0]) * point[0]
+                    + f64::from(g[1]) * point[1]
+                    + f64::from(g[2]) * point[2])
+        }
+    }
+
+    pub(super) fn ref_simplex_get2_f64(table: &GradientTable, x: f64, y: f64) -> f64 {
+        let x = x + table.offsets()[0];
+        let y = y + table.offsets()[1];
+        let root3 = 3.0_f64.sqrt();
+        let skew = 0.5 * (root3 - 1.0);
+        let unskew = (3.0 - root3) / 6.0;
+        let shift = (x + y) * skew;
+        let i = floor_i32(x + shift);
+        let j = floor_i32(y + shift);
+        let shift = f64::from(i.wrapping_add(j)) * unskew;
+        let dx = x - (f64::from(i) - shift);
+        let dy = y - (f64::from(j) - shift);
+        let (a, b) = if dx > dy { (1, 0) } else { (0, 1) };
+        let i = i & 255;
+        let j = j & 255;
+        let grad = |a, b| (ref_permute(table, i + a + ref_permute(table, j + b)) % 12) as usize;
+        let first = ref_simplex_corner(grad(0, 0), [dx, dy, 0.0], 0.5);
+        let second = ref_simplex_corner(
+            grad(a, b),
+            [dx - f64::from(a) + unskew, dy - f64::from(b) + unskew, 0.0],
+            0.5,
+        );
+        let third = ref_simplex_corner(
+            grad(1, 1),
+            [dx - 1.0 + 2.0 * unskew, dy - 1.0 + 2.0 * unskew, 0.0],
+            0.5,
+        );
+        70.0 * (first + second + third)
+    }
+
+    pub(super) fn ref_simplex_get2(table: &GradientTable, x: f64, y: f64) -> f32 {
+        ref_simplex_get2_f64(table, x, y) as f32
+    }
+
+    pub(super) fn ref_simplex_get3_f64(table: &GradientTable, x: f64, y: f64, z: f64) -> f64 {
+        let shifted = [
+            x + table.offsets()[0],
+            y + table.offsets()[1],
+            z + table.offsets()[2],
+        ];
+        let skew = (shifted[0] + shifted[1] + shifted[2]) * (1.0 / 3.0);
+        let cell = shifted.map(|v| floor_i32(v + skew));
+        let unskew = f64::from(cell[0].wrapping_add(cell[1]).wrapping_add(cell[2])) * (1.0 / 6.0);
+        let point: [f64; 3] = std::array::from_fn(|i| shifted[i] - (f64::from(cell[i]) - unskew));
+        let [x, y, z] = point;
+        let (a, b) = if x >= y {
+            if y >= z {
+                ([1, 0, 0], [1, 1, 0])
+            } else if x >= z {
+                ([1, 0, 0], [1, 0, 1])
+            } else {
+                ([0, 0, 1], [1, 0, 1])
+            }
+        } else if y < z {
+            ([0, 0, 1], [0, 1, 1])
+        } else if x < z {
+            ([0, 1, 0], [0, 1, 1])
+        } else {
+            ([0, 1, 0], [1, 1, 0])
+        };
+        let cell = cell.map(|v| v & 255);
+        let grad = |delta: [i32; 3]| {
+            (ref_permute(
+                table,
+                cell[0]
+                    + delta[0]
+                    + ref_permute(
+                        table,
+                        cell[1] + delta[1] + ref_permute(table, cell[2] + delta[2]),
+                    ),
+            ) % 12) as usize
+        };
+        let first = ref_simplex_corner(grad([0; 3]), point, 0.6);
+        let second = ref_simplex_corner(
+            grad(a),
+            std::array::from_fn(|i| point[i] - f64::from(a[i]) + (1.0 / 6.0)),
+            0.6,
+        );
+        let third = ref_simplex_corner(
+            grad(b),
+            std::array::from_fn(|i| point[i] - f64::from(b[i]) + (1.0 / 3.0)),
+            0.6,
+        );
+        let fourth = ref_simplex_corner(grad([1; 3]), point.map(|v| v - 1.0 + 0.5), 0.6);
+        32.0 * (first + second + third + fourth)
+    }
+
+    pub(super) fn ref_simplex_get3(table: &GradientTable, x: f64, y: f64, z: f64) -> f32 {
+        ref_simplex_get3_f64(table, x, y, z) as f32
     }
 }

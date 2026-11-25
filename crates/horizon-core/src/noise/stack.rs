@@ -1,9 +1,10 @@
 use super::{DensityError, DensityVolume, NanRange, PerlinNoise, SimplexNoise, SmearedPerlinNoise};
+use std::any::Any;
 use std::sync::Arc;
 
 /// Immutable noise sampling. Implementations may override the default scalar
 /// volume traversal when vanilla has a distinct bulk arithmetic path.
-pub trait Noise: std::fmt::Debug + Send + Sync {
+pub trait Noise: Any + std::fmt::Debug + Send + Sync {
     fn range(&self) -> Result<[f32; 2], NanRange>;
     fn get2(&self, x: f64, z: f64) -> f32;
     fn get3(&self, x: f64, y: f64, z: f64) -> f32;
@@ -90,6 +91,54 @@ impl Noise for SimplexNoise {
 }
 
 #[derive(Clone, Debug)]
+struct TypedLayer<T> {
+    noise: Arc<T>,
+    frequency: f64,
+    amplitude: f32,
+}
+
+/// Homogeneous devirtualized layer storage for stacks whose layers are all a
+/// single concrete `PerlinNoise`, `SmearedPerlinNoise`, or `SimplexNoise`.
+///
+/// Concrete layers share the existing `Arc<T>` instances from `layers` via
+/// `Arc::downcast::<T>()` — zero table cloning and no duplicate sampler tables
+/// alongside `layers` (only an `Arc` refcount bump per layer). Mixed stacks and
+/// custom wrapper `Noise` implementations fall back to `FastLayers::Dynamic`.
+#[derive(Clone, Debug)]
+enum FastLayers {
+    Perlin(Box<[TypedLayer<PerlinNoise>]>),
+    SmearedPerlin(Box<[TypedLayer<SmearedPerlinNoise>]>),
+    Simplex(Box<[TypedLayer<SimplexNoise>]>),
+    Dynamic,
+}
+
+/// Downcasts every layer to concrete type `T` using non-overridable [`Any`]
+/// type identity, sharing the existing [`Arc`] allocations with zero cloning.
+fn try_downcast_layers<T: Any + Send + Sync>(
+    layers: &[NoiseLayer],
+) -> Option<Box<[TypedLayer<T>]>> {
+    if !layers.iter().all(|layer| {
+        let any: &dyn Any = layer.noise.as_ref();
+        any.is::<T>()
+    }) {
+        return None;
+    }
+    layers
+        .iter()
+        .map(|layer| {
+            let cloned: Arc<dyn Noise> = Arc::clone(&layer.noise);
+            let any: Arc<dyn Any + Send + Sync> = cloned;
+            let noise = any.downcast::<T>().ok()?;
+            Some(TypedLayer {
+                noise,
+                frequency: layer.frequency,
+                amplitude: layer.amplitude,
+            })
+        })
+        .collect::<Option<Box<[_]>>>()
+}
+
+#[derive(Clone, Debug)]
 pub struct NoiseLayer {
     pub noise: Arc<dyn Noise>,
     pub frequency: f64,
@@ -99,6 +148,8 @@ pub struct NoiseLayer {
 #[derive(Clone, Debug)]
 pub struct NoiseStack {
     layers: Vec<NoiseLayer>,
+    fast: FastLayers,
+    y0_fast_path: bool,
     range: [f32; 2],
 }
 
@@ -119,20 +170,86 @@ impl Noise for NoiseStack {
     }
     fn get2(&self, x: f64, z: f64) -> f32 {
         let mut value = 0.0;
-        for layer in &self.layers {
-            value += layer.amplitude * layer.noise.get2(x * layer.frequency, z * layer.frequency);
+        match &self.fast {
+            FastLayers::Perlin(layers) => {
+                for layer in layers {
+                    value += layer.amplitude
+                        * layer.noise.get2(x * layer.frequency, z * layer.frequency);
+                }
+            }
+            FastLayers::SmearedPerlin(layers) => {
+                for layer in layers {
+                    value += layer.amplitude
+                        * layer.noise.get2(x * layer.frequency, z * layer.frequency);
+                }
+            }
+            FastLayers::Simplex(layers) => {
+                for layer in layers {
+                    value += layer.amplitude
+                        * layer.noise.get2(x * layer.frequency, z * layer.frequency);
+                }
+            }
+            FastLayers::Dynamic => {
+                for layer in &self.layers {
+                    value += layer.amplitude
+                        * layer.noise.get2(x * layer.frequency, z * layer.frequency);
+                }
+            }
         }
         value
     }
     fn get3(&self, x: f64, y: f64, z: f64) -> f32 {
         let mut value = 0.0;
-        for layer in &self.layers {
-            value += layer.amplitude
-                * layer.noise.get3(
-                    x * layer.frequency,
-                    y * layer.frequency,
-                    z * layer.frequency,
-                );
+        match &self.fast {
+            FastLayers::Perlin(layers) => {
+                if y == 0.0 && self.y0_fast_path {
+                    for layer in layers {
+                        value += layer.amplitude
+                            * layer
+                                .noise
+                                .get3_y0(x * layer.frequency, z * layer.frequency);
+                    }
+                } else {
+                    for layer in layers {
+                        value += layer.amplitude
+                            * layer.noise.get3(
+                                x * layer.frequency,
+                                y * layer.frequency,
+                                z * layer.frequency,
+                            );
+                    }
+                }
+            }
+            FastLayers::SmearedPerlin(layers) => {
+                for layer in layers {
+                    value += layer.amplitude
+                        * layer.noise.get3(
+                            x * layer.frequency,
+                            y * layer.frequency,
+                            z * layer.frequency,
+                        );
+                }
+            }
+            FastLayers::Simplex(layers) => {
+                for layer in layers {
+                    value += layer.amplitude
+                        * layer.noise.get3(
+                            x * layer.frequency,
+                            y * layer.frequency,
+                            z * layer.frequency,
+                        );
+                }
+            }
+            FastLayers::Dynamic => {
+                for layer in &self.layers {
+                    value += layer.amplitude
+                        * layer.noise.get3(
+                            x * layer.frequency,
+                            y * layer.frequency,
+                            z * layer.frequency,
+                        );
+                }
+            }
         }
         value
     }
@@ -147,14 +264,51 @@ impl Noise for NoiseStack {
         if buffer.len() < volume.size() {
             return Err(DensityError::BufferTooShort);
         }
-        for layer in &self.layers {
-            layer.noise.add_to_volume(
-                buffer,
-                volume,
-                xz_scale * layer.frequency,
-                y_scale * layer.frequency,
-                amplitude * layer.amplitude,
-            )?;
+        match &self.fast {
+            FastLayers::Perlin(layers) => {
+                for layer in layers {
+                    layer.noise.add_to_volume(
+                        buffer,
+                        volume,
+                        xz_scale * layer.frequency,
+                        y_scale * layer.frequency,
+                        amplitude * layer.amplitude,
+                    )?;
+                }
+            }
+            FastLayers::SmearedPerlin(layers) => {
+                for layer in layers {
+                    layer.noise.add_to_volume(
+                        buffer,
+                        volume,
+                        xz_scale * layer.frequency,
+                        y_scale * layer.frequency,
+                        amplitude * layer.amplitude,
+                    )?;
+                }
+            }
+            FastLayers::Simplex(layers) => {
+                for layer in layers {
+                    layer.noise.add_to_volume(
+                        buffer,
+                        volume,
+                        xz_scale * layer.frequency,
+                        y_scale * layer.frequency,
+                        amplitude * layer.amplitude,
+                    )?;
+                }
+            }
+            FastLayers::Dynamic => {
+                for layer in &self.layers {
+                    layer.noise.add_to_volume(
+                        buffer,
+                        volume,
+                        xz_scale * layer.frequency,
+                        y_scale * layer.frequency,
+                        amplitude * layer.amplitude,
+                    )?;
+                }
+            }
         }
         Ok(())
     }
@@ -225,8 +379,28 @@ impl NoiseStackBuilder {
                 range[0] = 0.0;
             }
         }
+        let fast = if self.layers.is_empty() {
+            FastLayers::Perlin(Box::new([]))
+        } else if let Some(layers) = try_downcast_layers::<PerlinNoise>(&self.layers) {
+            FastLayers::Perlin(layers)
+        } else if let Some(layers) = try_downcast_layers::<SmearedPerlinNoise>(&self.layers) {
+            FastLayers::SmearedPerlin(layers)
+        } else if let Some(layers) = try_downcast_layers::<SimplexNoise>(&self.layers) {
+            FastLayers::Simplex(layers)
+        } else {
+            FastLayers::Dynamic
+        };
+        let y0_fast_path = match &fast {
+            FastLayers::Perlin(layers) => layers.iter().all(|layer| {
+                layer.frequency.is_finite()
+                    && layer.noise.table().offsets()[1].to_bits() != (-0.0_f64).to_bits()
+            }),
+            _ => false,
+        };
         Ok(NoiseStack {
             layers: self.layers.clone(),
+            fast,
+            y0_fast_path,
             range,
         })
     }
