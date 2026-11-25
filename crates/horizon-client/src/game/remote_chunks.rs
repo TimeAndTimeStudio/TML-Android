@@ -211,7 +211,7 @@ impl ChunkDecoder {
             .spawn(move || {
                 // A frame waits for its columns, as it would for the render
                 // thread's own work.
-                horizon_threads::favour_current();
+                horizon_threads::chunk_decoder_current();
                 for (format, packet) in todo {
                     let column = match &*packet {
                         C::LevelChunkWithLight(p) => format.column(p),
