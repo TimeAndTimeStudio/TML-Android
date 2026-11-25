@@ -10,7 +10,7 @@ use horizon_client::{
     clipboard::EditShortcut,
     confirm_screen::Confirm,
     dialog::{AfterAction, Body, Click, Control, Dialog, InputValue, Kind},
-    dialog_screen::{BOX, Layout, Part, WARNING_SPRITES, text_height, waiting_button},
+    dialog_screen::{BOX, Layout, LayoutCache, Part, WARNING_SPRITES, text_height, waiting_button},
     font::Font,
     hud::{HudBatch, rgba},
     multiline_edit::MultiLineEdit,
@@ -37,6 +37,8 @@ struct Open {
     dragging: Option<usize>,
     /// The multiline input the pointer is selecting in.
     selecting: Option<usize>,
+    /// Where its parts go, laid out once for each screen size.
+    layout: LayoutCache,
 }
 
 /// A dialog a clicked command closed, kept for its confirmation's no.
@@ -304,6 +306,7 @@ impl Game<'_> {
             local: false,
             dragging: None,
             selecting: None,
+            layout: LayoutCache::default(),
         });
         self.dialogs.waiting = None;
         self.keys.clear();
@@ -492,13 +495,15 @@ impl Game<'_> {
         }
     }
 
+    /// The open dialog's layout, from its `LayoutCache`: the body is wrapped
+    /// once per screen size, and the copy only shares each line's text, so a
+    /// frame neither wraps it again nor copies its spans (#19102). Mods hook
+    /// this, so draw, click, scroll and drag all ask it.
     fn dialog_layout(&self) -> Option<Layout> {
         let open = self.dialogs.open.as_ref()?;
-        Some(Layout::new(
-            &open.dialog,
-            &self.gui.atlas.font,
-            self.gui_size(),
-        ))
+        let font = &self.gui.atlas.font;
+        let kept = open.layout.get(&open.dialog, font, self.gui_size());
+        Some(Layout::clone(&kept))
     }
 
     pub(super) fn draw_dialog(&mut self, batch: &mut HudBatch) {
