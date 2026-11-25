@@ -304,6 +304,12 @@ self-contained performance change that applied to this tree:
   can change this tick: the player's fluid flags, state and deflated bounds (plus the eye cell) are
   scanned and every cell must be `FluidKind::Empty`, with a bounded block count. The upstream
   daily equivalence test needs test fixtures absent here and is left out.
+- `92abe36aec` — `PalettedContainer::compact` and `BlockSection::compact` unpack the packed storage
+  once and remap cell indices through a first-use table (`remap_first_use`), hashing each distinct
+  palette slot at most once instead of `get`/`set` per cell. Adapted to this tree's storage-based
+  `PalettedContainer`, which has no `aliases` field, so the `aliases = None` line is dropped. The
+  upstream test's `last`-cache assertion is dropped (a benign hint) and replaced by a cell-by-cell
+  comparison; the test runs inline (this tree has no `chunk/tests.rs`).
 
 Already present in this tree (verified by their code being in `HEAD`): `ab44288662` (cloud
 `CloudMask` rebuild) and most of `e349aeccea` (packed light BFS; only upstream's later
@@ -348,7 +354,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
-`c415b158fe`.
+`c415b158fe`, `92abe36aec`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -424,7 +430,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `938b5387c4` | partially absent | 4 | 3 | perf(advancements): pre-filter tick criteria and cache biome/structure lookups (#19551) |
 | `e8bbb95d45` | partially absent | 5 | 4 | perf(advancements): the location trigger does not ask again what it found unmet for the same biome (#19863) |
 | `9bda820d2f` | partially absent | 5 | 4 | perf(blocks): borrow crafting grids and reuse non-empty stack slices per recipe lookup (#20456) |
-| `92abe36aec` | partially absent | 2 | 1 | perf(chunks): remap by palette slot in PalettedContainer::to_nbt and compact (#19869) |
 | `5cbec47ee2` | partially absent | 25 | 12 | perf(client): +4.2% stress_mobs FPS and lower per-frame entity/mob/item render-prep allocations (#19531) |
 | `e095541dc6` | partially absent | 2 | 1 | perf(client): -35 MB RD 32 steady RSS via reusable remote chunk DecodeScratch and palette-safe uniform pooling (#19530) |
 | `616c4fec2c` | partially absent | 4 | 2 | perf(client): -49 to -79 MB solo singleplayer steady RSS via ChunkEncoder wire-cache release (#19528) |
