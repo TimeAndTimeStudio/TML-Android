@@ -461,8 +461,11 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `d8f558197d` | +8.7..11.6% RD32 | conservative reversed-Z Hi-Z pyramid occlusion culling | adds `gfx/gpu_culling.rs` and `gfx/gpu_occlusion.wgsl`, absent here |
 | `12cd1ed563` | density | `IntervalSelectSampler` duplicate threshold scans | LerpSampler half ported; the IntervalSelect half needs the `needed`-mask sampler refactor, absent here |
 | `51670062e1` | 1.61x scalar | flat `SplineSampler` arena | needs `sample_with`/`usable_mask`, absent here |
-| `ebb6ee7a8a` | server | share encoded chunk bodies | needs `Body::Shared`/`Encoder::bodies_with`, absent here |
-| `3fa98d1bd8`, `f71ddcce2d`, `dedb0375a4` | font/sprites | large multi-region rewrites | diverge from this tree's older forms, deferred |
+| `ebb6ee7a8a` | server | share encoded chunk bodies | needs `Body::Shared`/`Encoder::bodies_with`, absent here: this tree's `Body` is `Level(usize)`/`Saved(Arc<[u8]>)` and `send_many` takes owned `Vec<u8>`, so the sharing would need the owned-vs-shared send body first |
+| `3fa98d1bd8`, `f71ddcce2d` | font | large multi-region rewrites | diverge from this tree's older forms, deferred |
+| `dedb0375a4` | sprites | streaming sprite/CTM layout | `sprites.rs` here is 1319 lines against a 2349-line pre-image; 23 of its 25 hunks reject, so it needs the absent png/animation-layout refactor first |
+| `60c8f9d0ef` | audio | single-pass mixer | `audio.rs` here is 1916 lines against a 3575-line pre-image and `sound_engine.rs` 1638 against a larger one; 42 hunks reject (30 `audio.rs`, 12 `sound_engine.rs`), so the newer sound-engine form has to land first |
+| `211e07fc54` | worldgen | bounded surface-rule cache, fast column writes | 7 files and 1908 insertions against this tree's 563-line `rule.rs` and 442-line `material_stage.rs`; 24 hunks reject, so it needs the absent material-condition refactor first |
 | `e0c1233a27` | -22..-33 MB | zero-alloc `EntityBatch` LUT + Schwartzian sort | needs the 16-material/native-terrain overlay refactor; this tree's `entity_batch.rs` is the older 10-material, 400-line form |
 | `d939fd378d` | +2.5..3.3% RD | faster `ChunkMap` lookups | needs the toroidal-grid/hash refactor in `world.rs`/`chunk_map.rs`, absent here |
 | `8e0b8ff5a5` | +1.1..4.3% RD16 | caching lightmap and skipping unchanged per-frame GPU uploads | lightmap `LightmapKey` cache, the hand/crosshair global-upload skip and the sunrise-fan skip are ported (see the list above); the sprite tick cache and the remaining per-frame upload skip still need this tree's older `gfx.rs` (488 lines, 8 conflict regions) |
