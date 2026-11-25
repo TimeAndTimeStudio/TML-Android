@@ -42,8 +42,8 @@ LABEL = "TML"
 # CI builds, signed with that repository's test key: the release key stays out of it.
 DEV_SUFFIX = ".dev"
 VARIANTS = {"dev": (DEV_SUFFIX, " Dev"), "preview": (".preview", " Preview")}
-VERSION_NAME = "1.0.74"
-VERSION_CODE = 89
+VERSION_NAME = "1.0.75"
+VERSION_CODE = 90
 MIN_SDK = 26  # AAudio (cpal)
 TARGET_SDK = 35
 PLATFORM = 36

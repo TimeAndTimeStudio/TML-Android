@@ -465,6 +465,17 @@ self-contained performance change that applied to this tree:
   `OreFeature` keeps its vein data and tested bitset in stack arrays up to 64 entries. The
   commit's stand-in chunk pooling (`generator.rs`, `generator_decoration.rs`) is not portable:
   it needs the `ImposterProtoChunk`/`is_full_chunk` stand-in refactor, which this tree predates.
+- `0c2cff4f46` (partial) — `PageRuns` sorts a frame's runs with an O(N) counting sort over
+  `(group, band, page)` buckets (up to 4096 buckets; stable, so runs stay nearest first), with
+  the stable `sort_by_key` kept for sparse synthetic inputs. `PageRuns::push_in` tracks the
+  group/page mix and maxima it needs (`mixed_gp`, `max_group`, `max_band`, `max_page`,
+  `total_draws`), `band_of` caches the last band's squared-distance bit range so a run's band
+  skips the `sqrt` division when it lands in the same 64-block band, and `regroup` copies the
+  draws/pages into reused scratch vectors instead of rebuilding them through one scratch list.
+  A test compares the counting sort and the sparse fallback against the old stable key order.
+  The commit's `Resident` SoA walk and L1 occlusion bitset are not portable: `gfx/resident.rs`
+  and `gfx/occlusion.rs` here are the older forms (573 and 661 diff lines against the
+  pre-image), so only `page_runs.rs`, which was identical to the pre-image, is ported.
 - `fba8c0452c` — `HudBatch::clip_since` cuts quads where they are (kept quads move down with
   `copy_within`, a cut one writes over its own slots, only a growing cut moves the unread rest)
   through a `clip_quad` helper, instead of cloning every quad out and putting each part back.
@@ -511,7 +522,7 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `e0c1233a27` | -22..-33 MB | zero-alloc `EntityBatch` LUT + Schwartzian sort | needs the 16-material/native-terrain overlay refactor; this tree's `entity_batch.rs` is the older 10-material, 400-line form |
 | `d939fd378d` | +2.5..3.3% RD | faster `ChunkMap` lookups | needs the toroidal-grid/hash refactor in `world.rs`/`chunk_map.rs`, absent here |
 | `8e0b8ff5a5` | +1.1..4.3% RD16 | caching lightmap and skipping unchanged per-frame GPU uploads | lightmap `LightmapKey` cache, the hand/crosshair global-upload skip and the sunrise-fan skip are ported (see the list above); the sprite tick cache and the remaining per-frame upload skip still need this tree's older `gfx.rs` (488 lines, 8 conflict regions) |
-| `cb2132352e`, `0c2cff4f46` | +FPS / +SoA | `ColumnSlab`, SoA `Resident`/pages | large rewrites of `gfx/occlusion.rs`, `gfx/pages.rs`, `gfx/resident.rs` against this tree's older forms |
+| `cb2132352e`, `0c2cff4f46` | +FPS / +SoA | `ColumnSlab`, SoA `Resident`/pages | `0c2cff4f46`'s `PageRuns` half is ported (see above); the `Resident`/`occlusion` SoA rewrites and `cb2132352e`'s `ColumnSlab` still diverge heavily from this tree's older `gfx/occlusion.rs`, `gfx/pages.rs`, `gfx/resident.rs` |
 | `0f0dea6114`, `96d758bf25` | +1.4..2.0% RD / mesh lock | streaming mesh-job pooling | `0f0dea6114` needs `mesh_settings()`/`submit_mesh_candidates` and `hz_laps`, absent here; `96d758bf25` fixes a queue lock held across job building, which this tree never does (`submit` takes the lock per job and builds each region before it) |
 | `5aeaafa6e5` | world | remap section palette slots at pack time | this tree's `PalettedContainer::to_nbt` predates the per-cell dedup the `aliases` table optimises (it copies the palette and words as-is), so the change would replace a cheaper save with a remap |
 | `a3ae5b0d11` | hub | meet a tracked-whole cell without its entities | needs the multi-level viewer (`Viewer::sources`, `player_shown`, `viewed_levels::entities`) and the `lan::Body` output this tree's tracker predates |
@@ -529,7 +540,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
 `e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`, `15824fc6f3` (with prerequisite
 `24dcd97129`), `8af680316d` (partial), `616c4fec2c`, `fba8c0452c`, `533bb2cdd3`, `ad406095d4`
-(partial), `e08d2e53a5`, `51670062e1`, `12cd1ed563`, `a8e58dcedf` (partial).
+(partial), `e08d2e53a5`, `51670062e1`, `12cd1ed563`, `a8e58dcedf` (partial), `0c2cff4f46` (partial).
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -551,7 +562,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `3fa98d1bd8` | api/semantics | 1 | 0 | perf(font): compact Unihex HexTable and shared archive cache (~7.4 MB less RAM per table) (#20185) |
 | `8e0b8ff5a5` | api/semantics | 2 | 0 | perf(render): +1.1% to +4.3% FPS (+9.5% 1% lows) by caching lightmap and skipping unchanged per-frame GPU uploads (#19513) |
 | `0f0dea6114` | api/semantics | 1 | 0 | perf(render): +1.4% to +2.0% FPS and -56 MB mountain RSS via section-level mesh budgeting and calm-frame guards (#19527) |
-| `0c2cff4f46` | api/semantics | 3 | 0 | perf(render): +2.1% to +5.4% FPS (+10.2% 1% lows) via SoA Resident walk + O(N) PageRuns + L1 Occlusion bitset (#19514) |
 | `d939fd378d` | api/semantics | 2 | 0 | perf(render): +2.5% to +3.3% FPS and 1.59x faster lookups via safe toroidal ChunkMap cache (#19515) |
 | `f43817376a` | api/semantics | 1 | 0 | perf(render): -13 to -25 MB steady RSS and +0.9% FPS via bucketed Uploads staging ring with idle trimming (#19516) |
 | `e0c1233a27` | api/semantics | 1 | 0 | perf(render): -22 to -33 MB steady RSS and zero-alloc EntityBatch LUT + Schwartzian sort (#19520) |
