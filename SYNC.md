@@ -333,7 +333,7 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `3fa98d1bd8`, `f71ddcce2d`, `533bb2cdd3`, `ad406095d4`, `dedb0375a4` | font/noise/particles/sprites | large multi-region rewrites | diverge from this tree's older forms, deferred |
 | `e0c1233a27` | -22..-33 MB | zero-alloc `EntityBatch` LUT + Schwartzian sort | needs the 16-material/native-terrain overlay refactor; this tree's `entity_batch.rs` is the older 10-material, 400-line form |
 | `d939fd378d` | +2.5..3.3% RD | faster `ChunkMap` lookups | needs the toroidal-grid/hash refactor in `world.rs`/`chunk_map.rs`, absent here |
-| `8e0b8ff5a5` | +1.1..4.3% RD16 | cache lighting in the far shader | modifies `gfx/animate.rs`, absent here |
+| `8e0b8ff5a5` | +1.1..4.3% RD16 | caching lightmap and skipping unchanged per-frame GPU uploads | 488 lines through this tree's older `gfx.rs` (8 conflict regions); needs the lightmap/upload refactor |
 | `cb2132352e`, `0c2cff4f46` | +FPS / +SoA | `ColumnSlab`, SoA `Resident`/pages | large rewrites of `gfx/occlusion.rs`, `gfx/pages.rs`, `gfx/resident.rs` against this tree's older forms |
 | `0f0dea6114`, `96d758bf25` | +1.4..2.0% RD / mesh lock | streaming mesh-job pooling | needs `mesh_settings()`/`submit_mesh_candidates` and `hz_laps` instrumentation, absent here |
 | `e08d2e53a5` | OIT passes | coalesce OIT terrain/feature passes | needs `pixel_count`/`FeatureCounts`/`counted`, absent here |
@@ -345,6 +345,153 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`.
 
-The remaining upstream perf commits from the Nov 20-24 window are ~130; the ones not in this
-table all modify files this tree never had (the Nov 23-24 gameplay/render reorganisation), so
-they cannot be hand-applied without first porting that reorganisation.
+### Every remaining upstream perf commit and why it is deferred
+
+The commits below are the rest of the Nov 20-24 window's performance batches. `Kind` says why
+each is left out: **files absent** / **partially absent** touch files this tree never had (the
+Nov 23-24 gameplay/render reorganisation), so there is nothing to apply them to; **api/semantics**
+has every named file here, but the change calls APIs or depends on data this tree's older form
+does not have. The notable `api/semantics` cases are detailed in the table above; the list here is
+the complete accounting. (`ab44288662` and `e349aeccea` are already present in `HEAD`, and the two
+`docs(benchmark)` commits and `c2ee7380c3` (shader packs, removed here) are not applicable.)
+
+| Commit | Kind | Files | Absent | Subject |
+| --- | --- | --- | --- | --- |
+| `3a0c68c1c9` | api/semantics | 1 | 0 | docs(benchmark): the A/B example passes horizon-perf summary the newest report (#19753) |
+| `3465b5f7ac` | api/semantics | 1 | 0 | docs(benchmark): the A/B section reads its result with horizon-perf summary (#19745) |
+| `60c8f9d0ef` | api/semantics | 3 | 0 | perf(audio): 13.15x faster mix_buffer (-92.4%) and 4.86x faster SoundEngine::tick (-79.4%) via single-pass mixer (#19535) |
+| `96d758bf25` | api/semantics | 1 | 0 | perf(chunks): build mesh jobs before taking the job queue's lock (#19870) |
+| `9609bc8ccf` | api/semantics | 1 | 0 | perf(command): borrow unquoted selector option keys and avoid Selector::clone in parse (#20713) |
+| `f71ddcce2d` | api/semantics | 1 | 0 | perf(font): LZ4-compressed chunked off-atlas bitmap font strips (#20186) |
+| `3fa98d1bd8` | api/semantics | 1 | 0 | perf(font): compact Unihex HexTable and shared archive cache (~7.4 MB less RAM per table) (#20185) |
+| `fba8c0452c` | api/semantics | 2 | 0 | perf(interface): keep the HUD vertex buffer and clip quads in place (#18010) |
+| `533bb2cdd3` | api/semantics | 4 | 0 | perf(noise): -4.6% worldgen proto wall time via bit-exact Perlin/Simplex/NoiseStack fast paths (#19536) |
+| `e08d2e53a5` | api/semantics | 3 | 0 | perf(oit): coalesce OIT terrain/feature render passes, skip empty features, and unroll 3-level Haar wavelets (#20202) |
+| `8e0b8ff5a5` | api/semantics | 2 | 0 | perf(render): +1.1% to +4.3% FPS (+9.5% 1% lows) by caching lightmap and skipping unchanged per-frame GPU uploads (#19513) |
+| `0f0dea6114` | api/semantics | 1 | 0 | perf(render): +1.4% to +2.0% FPS and -56 MB mountain RSS via section-level mesh budgeting and calm-frame guards (#19527) |
+| `0c2cff4f46` | api/semantics | 3 | 0 | perf(render): +2.1% to +5.4% FPS (+10.2% 1% lows) via SoA Resident walk + O(N) PageRuns + L1 Occlusion bitset (#19514) |
+| `d939fd378d` | api/semantics | 2 | 0 | perf(render): +2.5% to +3.3% FPS and 1.59x faster lookups via safe toroidal ChunkMap cache (#19515) |
+| `f43817376a` | api/semantics | 1 | 0 | perf(render): -13 to -25 MB steady RSS and +0.9% FPS via bucketed Uploads staging ring with idle trimming (#19516) |
+| `e0c1233a27` | api/semantics | 1 | 0 | perf(render): -22 to -33 MB steady RSS and zero-alloc EntityBatch LUT + Schwartzian sort (#19520) |
+| `ad406095d4` | api/semantics | 1 | 0 | perf(render): -5.6% multi-thread particle tick CPU and zero-alloc billboard/light-cache render fast paths (#19532) |
+| `dedb0375a4` | api/semantics | 1 | 0 | perf(render): -8.2% to -8.6% sprite and CTM pack load time and lower peak RAM via streaming layout (#19534) |
+| `cb2132352e` | api/semantics | 1 | 0 | perf(render): contiguous ColumnSlab and zero-alloc scratch in cave occlusion graph (-5.0% RD 34 search_cost) (#20471) |
+| `ebb6ee7a8a` | api/semantics | 1 | 0 | perf(server): share encoded chunk bodies across recipients (#18368) |
+| `c2ee7380c3` | api/semantics | 1 | 0 | perf(shaders): a shader pack's global of literals is initialized by the module, not stored again in every invocation (#19715) |
+| `a8e58dcedf` | api/semantics | 6 | 0 | perf(worldgen): -15.1% decorate wall time via stand-in chunk pooling, ore/placement scratch reuse, and warm-biome shortcut (#20191) |
+| `211e07fc54` | api/semantics | 7 | 0 | perf(worldgen): bounded per-worker CompiledSurfaceRule variant cache and fast column writes (#20190) |
+| `51670062e1` | api/semantics | 1 | 0 | perf(worldgen): flat contiguous compiled SplineSampler arena (1.61x faster scalar, -12.8% zero-alloc volume) (#20476) |
+| `15824fc6f3` | api/semantics | 2 | 0 | perf(worldgen): grid-candidate structure range check and two-pass busy-chunk references (#20188) |
+| `f618858113` | files absent | 4 | 4 | bug(mods): a game with native mods keeps Play with Friends and Horizon's other official parts (#19408) |
+| `937363f340` | files absent | 3 | 3 | fix(tooling): reading a .hzperf capture stops at a limit on what it inflates (#20350) |
+| `07147ef4af` | files absent | 2 | 2 | perf(bossbars): skip publish_boss_bars without sources and prune empty viewer maps (#19326) |
+| `bf1294c568` | files absent | 7 | 7 | perf(carts): a cart takes the boxes of the carts near it once when its tick begins (#18043) |
+| `f82d68ab08` | files absent | 2 | 2 | perf(client): -48 MB peak RSS and per-item Remote backlog deadline preventing chunk-burst starvation (#19529) |
+| `918ae6d651` | files absent | 1 | 1 | perf(commands): player selectors read the player list, not every entity of every level (#19242) |
+| `0708a190c6` | files absent | 4 | 4 | perf(commands): use an ordered TimerQueue for scheduled functions (#20405) |
+| `d1327bf82c` | files absent | 2 | 2 | perf(game): index player bot movement lookup (#19752) |
+| `df587802f0` | files absent | 1 | 1 | perf(json-nbt): avoid per-number string and per-object Vec allocations in json_nbt (#20643) |
+| `210fdc3e6c` | files absent | 3 | 3 | perf(lan): add O(1) GuestList UUID index, lock-free layout/written check, and registration_ref (#19082) |
+| `4b4a6b40e1` | files absent | 2 | 2 | perf(mobs): serialise a mob's turn only for the hooks that run in it (#18260) |
+| `ec0648aba7` | files absent | 3 | 3 | perf(mobs): skip tick_sniffer_effects when no live sniffer exists (#19324) |
+| `a87cdbd698` | files absent | 15 | 15 | perf(mod-api): keep per-file generator results across build script runs (#18249) |
+| `4529f78913` | files absent | 1 | 1 | perf(mod-runtime): skip byte_channel condvar wakeups when no waiters exist (#19084) |
+| `40879f5f25` | files absent | 5 | 5 | perf(modding): track mob/player render hook listeners per phase via MobRenderHooks (#19580) |
+| `3ff2a22128` | files absent | 1 | 1 | perf(mods): fluid declarations load through the shared package reader (#20067) |
+| `4291720f70` | files absent | 2 | 2 | perf(motion): add cells_without_collision fast path for no_player_collision (#19550) |
+| `ff7679e3eb` | files absent | 3 | 3 | perf(portals): each level keeps its own portal palette cache (#18365) |
+| `debef4584c` | files absent | 1 | 1 | perf(remote): skip followed/sleepers scans in tick_remote_entities when no orbs or cats exist (#19579) |
+| `ac8c53a1e7` | files absent | 3 | 3 | perf(render): +1.6% to +4.8% FPS (+15.5% 1% lows) via 4-band coalesced GPU culling (#19509) |
+| `73c70814c7` | files absent | 1 | 1 | perf(rendering): equal LabPBR map pages share one page of the paged map's pool (#18918) |
+| `9436a2972a` | files absent | 3 | 3 | perf(rendering): the frame check reads nothing from disk with no shader pack picked (#19216) (#19254) |
+| `f8143deba2` | files absent | 3 | 3 | perf(scoreboard): find the teams of entities by the holders on teams, not by formatting every entity's name (#18017) |
+| `1bde596b8d` | files absent | 2 | 2 | perf(sculk): skip step_on on empty index and avoid player Vec allocation (#19325) |
+| `a95ec735d0` | files absent | 3 | 3 | perf(server): a guest's view for the mobs swaps the dozen fields it reads, not a hundred (#18033) |
+| `b3238d7e7a` | files absent | 4 | 4 | perf(server): an idle level closes without waiting for the disk in the tick (#18474) |
+| `3211b1c783` | files absent | 4 | 4 | perf(server): refresh the guest turns' player boxes by write, not for every guest (#17384) |
+| `6ab1ecf4df` | files absent | 1 | 1 | perf(server): the proxy keeps the account service's discovery answer for five minutes (#20133) |
+| `9369bd7696` | files absent | 1 | 1 | perf(snbt): add ASCII fast paths and avoid intermediate allocations in SNBT parser (#20641) |
+| `fc2be616c9` | files absent | 12 | 12 | perf(stats): store per-tick custom counters inline and privatize Stats::values (#19323) |
+| `1181594273` | files absent | 1 | 1 | perf(vehicles): find a rider's vehicle by its slots before asking the vehicle's presence (#18377) |
+| `82a7d7af03` | files absent | 2 | 2 | perf(world): skip random ticks and empty block_events with_level work in tick_blocks (#19454) |
+| `406fc22363` | partially absent | 2 | 1 | build(perf): stop building horizon-perf as cdylib by default (#20515) |
+| `3b1d03eb67` | partially absent | 8 | 6 | fix+perf(gpu): fix live GRAIN=64 shift in mesh/visbuffer shaders, add workgroup compaction, staged uploads, and cached visbuffer bind groups (#20203) |
+| `938b5387c4` | partially absent | 4 | 3 | perf(advancements): pre-filter tick criteria and cache biome/structure lookups (#19551) |
+| `e8bbb95d45` | partially absent | 5 | 4 | perf(advancements): the location trigger does not ask again what it found unmet for the same biome (#19863) |
+| `9bda820d2f` | partially absent | 5 | 4 | perf(blocks): borrow crafting grids and reuse non-empty stack slices per recipe lookup (#20456) |
+| `92abe36aec` | partially absent | 2 | 1 | perf(chunks): remap by palette slot in PalettedContainer::to_nbt and compact (#19869) |
+| `5cbec47ee2` | partially absent | 25 | 12 | perf(client): +4.2% stress_mobs FPS and lower per-frame entity/mob/item render-prep allocations (#19531) |
+| `e095541dc6` | partially absent | 2 | 1 | perf(client): -35 MB RD 32 steady RSS via reusable remote chunk DecodeScratch and palette-safe uniform pooling (#19530) |
+| `616c4fec2c` | partially absent | 4 | 2 | perf(client): -49 to -79 MB solo singleplayer steady RSS via ChunkEncoder wire-cache release (#19528) |
+| `1d0b68bcbb` | partially absent | 10 | 6 | perf(client): Battery Mode halves every pool the client starts (#18465) |
+| `fd3b4ff6a3` | partially absent | 2 | 1 | perf(client): stop raising the chunk decoders above the frame (#18268) |
+| `8af680316d` | partially absent | 2 | 1 | perf(commands): each function tag is expanded once, without recursion (#20088) |
+| `35182ca465` | partially absent | 6 | 1 | perf(creative): index stack deduplication during tab rebuilds (#18459) |
+| `c94d887bda` | partially absent | 22 | 18 | perf(entities): an armor stand nobody has borrowed mutably keeps its network entry (#19864) |
+| `f60fd796db` | partially absent | 6 | 4 | perf(far-terrain): limit far work to one job at a time through a world entry's first near load (#20457) |
+| `ee65f0d916` | partially absent | 3 | 2 | perf(far-terrain): summarize a near chunk when it leaves the near area, not when it arrives (#20455) |
+| `d9b8e7bef2` | partially absent | 2 | 1 | perf(font): compact canonical TrueType glyph-ID table with oversized glyph fallthrough (#20187) |
+| `755f7892ac` | partially absent | 6 | 5 | perf(game): the server's tick stops doing client work (#15437 Wave 0) (#18076) |
+| `d8f558197d` | partially absent | 6 | 2 | perf(gpu): +8.7% to +11.6% RD 32 FPS (+18.5% mountain 1% low) via conservative reversed-Z Hi-Z pyramid compute occlusion culling (#20194) |
+| `150cf23815` | partially absent | 4 | 1 | perf(graphics): pbrBudgetMiB sets the LabPBR maps' video memory apart from the block textures' (#18690) |
+| `a3ae5b0d11` | partially absent | 3 | 2 | perf(hub): meet a cell the client tracks whole without its entities (#18041) |
+| `1dc5634a22` | partially absent | 3 | 1 | perf(hub): route remaining par_chunks_mut callers to the persistent tick-helper pool (#19074) |
+| `ba54be7849` | partially absent | 5 | 1 | perf(hud): +7.6% to +8.9% RD 16 FPS (+12.2% to +16.9% 1% low) via reusable HudBatch/GuiDraw/glyph_scratch and inline DrawnKey (#20196) |
+| `9ba83fa92f` | partially absent | 6 | 3 | perf(items): +144.4% stress_items FPS (+50.9% stress_frames) via static item model resolution cache and zero-alloc item prep (#20192) |
+| `e0fa72f5db` | partially absent | 6 | 1 | perf(launcher): adopt async engine for Minecraft downloads (#15970) |
+| `c731ef64c2` | partially absent | 4 | 2 | perf(locator-bar): a calm tick meets only what changed; flat pair step; delivery by receiver (#17446) |
+| `17b92d07c2` | partially absent | 4 | 2 | perf(locator-bar): encode a waypoint update once for all its receivers (#17382) |
+| `8c27fbd2a0` | partially absent | 5 | 1 | perf(lod): +2.0% to +3.8% RD 32 FPS via O(1) calm-frame LOD uploads, COW dispatch snapshots, and skipping unused LOD meshlets (#20200) |
+| `eee912b040` | partially absent | 3 | 1 | perf(mesher): +4.3% to +8.4% RD 16 FPS (+11.9% to +19.5% 1% low) via spatial front-to-back meshlet clustering and branchless sub-AABB (#20197) |
+| `e2f71bb180` | partially absent | 4 | 1 | perf(mobs): add static mannequin fast path with world revision and position stamp (#19455) |
+| `eb230e5a2b` | partially absent | 15 | 9 | perf(mobs): keep the villagers' village sections in an index for the mob loop (#19843) |
+| `b6e61677b7` | partially absent | 4 | 2 | perf(mobs): lock-free seqlock PathTypeCache (4.44x faster under 8-thread contention) and zero-alloc A* Finder (#20477) |
+| `a82b6173e5` | partially absent | 18 | 11 | perf(mobs): search a target among the slots of its species, not every mob nearby (#18029) |
+| `8989a510ff` | partially absent | 7 | 5 | perf(mods): link a content root's directories as junctions on Windows (#17546) |
+| `c415b158fe` | partially absent | 3 | 1 | perf(motion): add dry-air fast path for fluid_base_tick (#19549) |
+| `37352802a1` | partially absent | 3 | 1 | perf(motion): add stationary fast paths for replayed_tick, server_travel, and flat support (#19072) |
+| `7954f21558` | partially absent | 4 | 2 | perf(network): frame the small packets of a run in place, counted once (#17380) |
+| `dd3ed413f2` | partially absent | 4 | 3 | perf(paletted): pack words sequentially and specialize 4-8/15-16 bit unpack (#19875) |
+| `bfa705b62a` | partially absent | 6 | 5 | perf(protocol): scope legacy guards to their actual readers (#20212) |
+| `a71b87a3d5` | partially absent | 3 | 2 | perf(protocol): serialize network NBT directly into packets (#19931) |
+| `82e61665c4` | partially absent | 5 | 2 | perf(render): +17.3% ocean and +8.7% village chunk meshing throughput (-25.4% max section) via mesher fast paths (#19523) |
+| `231984a0df` | partially absent | 11 | 6 | perf(render): +2.0% to +4.6% FPS (+14.0% 1% lows) by staging TAA/OIT/HDR uniforms and gating unhooked mod slots (#19511) |
+| `432d764acb` | partially absent | 11 | 4 | perf(render): +22.6% to +37.7% stress BE FPS (+2.9% village) via single-pass block-entity prep, pre-baked shulkers, and const diffuse lights (#20193) |
+| `e549bffef3` | partially absent | 5 | 2 | perf(render): +3.6% to +8.9% RD 16 FPS (+7.0% to +20.2% 1% low) on Linux Vulkan via reverse-Z sky pass after solid terrain (#19510) |
+| `916563f8ce` | partially absent | 4 | 2 | perf(render): -37 MB mountain RSS and +1.6% RD 32 FPS (~55% smaller LOD tiles) via flat-CSR TileColumns (#19521) |
+| `5fc0fdfdb9` | partially absent | 8 | 6 | perf(render): -71 to -144 MB VRAM and up to +2.2% FPS (+10.0% 1% lows) via Arena GRAIN=64 and O(1) FreeList (#19512) |
+| `fa67d4f767` | partially absent | 6 | 2 | perf(render): GPU Culling Auto keeps a trial only when frame time holds (#19972) |
+| `45eeccded1` | partially absent | 7 | 4 | perf(render): GPU compute meshlet culling and Visbuffer mesh shader support (#19485) |
+| `42af125dc8` | partially absent | 2 | 1 | perf(render): enable GPU skinning for unarmored remote players and translucent-body mobs when tagged (#19581) |
+| `b45d73de43` | partially absent | 2 | 1 | perf(render): skip off-screen weather column generation and vertex upload (#15997) |
+| `d31d4b41d0` | partially absent | 4 | 3 | perf(rendering): a depth pre-pass for a native pack's solid material terrain (#20251) |
+| `b3e502a5e2` | partially absent | 2 | 1 | perf(rendering): bake a server pack's own item models ahead, on a worker (#18177) |
+| `dc6202f313` | partially absent | 5 | 3 | perf(rendering): hardware task and mesh shader terrain stages (step 2) (#17891) |
+| `c3b758468c` | partially absent | 7 | 5 | perf(rendering): section meshlet extraction, GPU store and mesh pipeline (step 3 & 4) (#18517) |
+| `917f45a488` | partially absent | 6 | 4 | perf(rendering): upload solid_sources by slot for packed flat shader packs (#19605) |
+| `1e1e41d912` | partially absent | 2 | 1 | perf(rendering): with HDR on, the display check no longer stalls the render thread every 2 s (#18609) |
+| `a27fee23ca` | partially absent | 7 | 5 | perf(rendering): worker-thread meshlets, occlusion culling, indirect dispatch and 128-lane mesh shader (#19471) |
+| `4ac255c284` | partially absent | 2 | 1 | perf(saves): batch fresh region file headers and record prefixes (#19928) |
+| `a05c0e5aa0` | partially absent | 5 | 3 | perf(saves): lazily cache canonical section palettes per SaveDir (#19440) |
+| `309b772964` | partially absent | 5 | 3 | perf(saves): share one section palette budget per world and count shared entries once (#19861) |
+| `5b21a55844` | partially absent | 10 | 4 | perf(server): give memory back once a dedicated server is empty (#18290) |
+| `5115507c83` | partially absent | 12 | 6 | perf(server): give the server thread a physical core of its own on machines with SMT (#17840) |
+| `7fe978ddbe` | partially absent | 5 | 4 | perf(server): run a guest's sculk step and tick tail in its body's turn when it told no one anything (#18031) |
+| `55cc2b9740` | partially absent | 6 | 5 | perf(server): share identical block and light broadcast payloads (#20238) |
+| `92d8bf33e1` | partially absent | 2 | 1 | perf(shaders): a geometry stage of separate strips of three draws one instance per strip (#19699) |
+| `8197ba2363` | partially absent | 8 | 4 | perf(shaders): a loop naga proves finite gets no forced bound (#19862) |
+| `2798431890` | partially absent | 8 | 3 | perf(shaders): a pack's shadow pass sorts its sections once and draws the solid ones with indirect multi-draws (#19806) |
+| `6fd61f2dcc` | partially absent | 19 | 15 | perf(shaders): compile native shader packs asynchronously and batch option edits (#20601) |
+| `cbac118119` | partially absent | 9 | 6 | perf(streaming): 92x faster PendingUploads priority queue, O(1) settlement checks and batched Job::Free lock (#20473) |
+| `fdf87ca16d` | partially absent | 2 | 1 | perf(threads): pad the pool's scheduler counters onto their own cache lines (#18415) |
+| `e0bbdc1e25` | partially absent | 3 | 1 | perf(ui): a dialog is laid out once per screen size, not every frame (#19237) |
+| `e8618f82ba` | partially absent | 13 | 11 | perf(world): +6.0% to +10.0% FPS (+19.9% village 1% low) by keeping ChunkMap toroidal cache hot via grid_missing counter and pub mutate_chunk (#20195) |
+| `182e08c079` | partially absent | 4 | 1 | perf(world): add O(1) id index and well-known lookup to LiveAttributes (#19077) |
+| `276a8e844f` | partially absent | 4 | 2 | perf(world): cache awake block entity tickers and refresh mid-pass on wake (#19079) |
+| `2b13c06240` | partially absent | 6 | 3 | perf(world): far terrain stays below normal priority on Windows; no auto-pause during loading (#19957) |
+| `da428edd27` | partially absent | 12 | 11 | perf(world): index block entities by kind and by chunk (#18001) |
+| `5aeaafa6e5` | partially absent | 3 | 1 | perf(world): remap section palette slots at pack time (#20095) |
+| `839c063c9e` | partially absent | 9 | 3 | perf(worldgen): -4.4% proto wall (-22.9% biomes) at 6,400 chunks via 64-shard caches, shared Arc<BiomeChunk>, and ClimateIndex (#19537) |
+| `fa3e009465` | partially absent | 17 | 14 | tooling(perf): add headless baselines for five engine hot paths (#19968) |
+
+Deferred: 136 commits — 25 api/semantics, 79 partially absent, 32 files absent.
