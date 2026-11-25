@@ -326,6 +326,13 @@ self-contained performance change that applied to this tree:
   path; `can_use` becomes `option_usable`, which also rejects unknown keys so the separate
   `OPTIONS.contains` check goes. This fork has no mod system, so the `selector_tokens` lookup the
   commit also guards is not present to adapt.
+- `8197ba2363` — Horizon's new `third_party/naga/src/back/bounded_loop.rs` proves a SPIR-V
+  loop finite (a local integer counter only its own step changes, compared with a bound it cannot
+  wrap past), so the SPIR-V backend leaves out its `force_loop_bounding` counter and exit and the
+  driver's compiler sees the trip count; `gfx.rs` reads `HORIZON_SHADER_LOOP_PROOFS=0` once to
+  bound every loop again for A/B checks. This tree has no `crates/horizon-shaders/tests/it/`, so
+  the upstream harness test is dropped; the pass, its `back/mod.rs` registration, the `spv/block.rs`
+  gate and the `THIRD_PARTY_NOTICES.md` note are ported.
 - `92d8bf33e1` — a geometry stage whose every `EmitVertex` sits in its own `for (int i = 0; i < 3;
   i++)` strip loop draws one triangle per loop, so `combine()` bounds the instance count with
   `emission_loops()` instead of `max_vertices - 2`. This tree has no `array_constructors` module,
@@ -418,7 +425,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
-`e0bbdc1e25`, `92d8bf33e1`.
+`e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -543,7 +550,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `5115507c83` | partially absent | 12 | 6 | perf(server): give the server thread a physical core of its own on machines with SMT (#17840) |
 | `7fe978ddbe` | partially absent | 5 | 4 | perf(server): run a guest's sculk step and tick tail in its body's turn when it told no one anything (#18031) |
 | `55cc2b9740` | partially absent | 6 | 5 | perf(server): share identical block and light broadcast payloads (#20238) |
-| `8197ba2363` | partially absent | 8 | 4 | perf(shaders): a loop naga proves finite gets no forced bound (#19862) |
 | `2798431890` | partially absent | 8 | 3 | perf(shaders): a pack's shadow pass sorts its sections once and draws the solid ones with indirect multi-draws (#19806) |
 | `6fd61f2dcc` | partially absent | 19 | 15 | perf(shaders): compile native shader packs asynchronously and batch option edits (#20601) |
 | `cbac118119` | partially absent | 9 | 6 | perf(streaming): 92x faster PendingUploads priority queue, O(1) settlement checks and batched Job::Free lock (#20473) |
