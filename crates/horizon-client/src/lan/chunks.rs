@@ -21,7 +21,7 @@ use std::{
     collections::HashMap,
     sync::{
         Arc, OnceLock,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
@@ -117,6 +117,10 @@ pub struct ChunkEncoder {
     cache: std::sync::Mutex<FxHashMap<usize, Encoded>>,
     /// Each column's heightmaps, with the sections they were made from.
     heights: std::sync::Mutex<HashMap<(i32, i32), Heights>>,
+    /// Whether to retain encoded wire sections and heightmaps across sends.
+    /// In solo singleplayer there is only one receiver, so keeping wire bytes
+    /// and heightmaps for every sent chunk wastes tens of megabytes of RAM.
+    retain_wire: AtomicBool,
     /// The level's sections among a column's: all of them in the Overworld,
     /// y 0 to 255 in the Nether and the End (`DimensionType` min_y and height).
     sections: std::ops::Range<usize>,
@@ -496,6 +500,7 @@ impl ChunkEncoder {
             tables: None,
             cache: Default::default(),
             heights: Default::default(),
+            retain_wire: AtomicBool::new(true),
             sections: 0..ColumnLayout::VANILLA.sections(),
             column: ColumnLayout::VANILLA,
             sky: true,
@@ -512,11 +517,37 @@ impl ChunkEncoder {
         ChunkBiomeData::from_biomes([chunk.x, chunk.z], &biomes)
     }
 
+    /// Control whether encoded wire sections and heightmaps are retained across sends.
+    /// Dropping retention clears already-stored wire payloads and heightmaps while keeping
+    /// the tiny `non_air` bits intact.
+    pub fn set_retain_wire(&self, retain: bool) {
+        let prev = self.retain_wire.swap(retain, Ordering::Relaxed);
+        if prev && !retain {
+            *self.heights.lock().unwrap() = HashMap::new();
+            let mut cache = self.cache.lock().unwrap();
+            for e in cache.values_mut() {
+                e.wire = None;
+            }
+        }
+    }
+
+    /// Drop wire bytes and heightmaps populated by a solo warm-up batch after
+    /// `bodies_with` has consumed them.
+    pub fn clear_batch_wire(&self) {
+        if !self.retain_wire.load(Ordering::Relaxed) {
+            self.heights.lock().unwrap().clear();
+            let mut cache = self.cache.lock().unwrap();
+            for e in cache.values_mut() {
+                e.wire = None;
+            }
+        }
+    }
+
     /// The client heightmaps (Heightmap.prime over the column), from the
     /// cache while the column's sections are unchanged.
     fn heightmaps(&self, chunk: &Chunk, tables: &crate::save::SaveTables) -> ColumnHeightmaps {
-        let mut heights = self.heights.lock().unwrap();
-        if let Some(maps) = cached_heights(&heights, chunk) {
+        let cached = cached_heights(&self.heights.lock().unwrap(), chunk);
+        if let Some(maps) = cached {
             return maps;
         }
         let (min_y, height) = self.level();
@@ -527,7 +558,10 @@ impl ChunkEncoder {
             min_y,
             height,
         ));
-        keep_heights(&mut heights, (chunk.x, chunk.z), &chunk.sections, &maps);
+        if self.retain_wire.load(Ordering::Relaxed) {
+            let mut heights = self.heights.lock().unwrap();
+            keep_heights(&mut heights, (chunk.x, chunk.z), &chunk.sections, &maps);
+        }
         maps
     }
 
@@ -586,7 +620,9 @@ impl ChunkEncoder {
             return wire;
         }
         let wire = self.coder.wire(section);
-        self.cached(section, |e| e.wire = Some(wire.clone()));
+        if self.retain_wire.load(Ordering::Relaxed) {
+            self.cached(section, |e| e.wire = Some(wire.clone()));
+        }
         wire
     }
     /// Encode for a level of `shape`: its chunks hold `shape.column()`, of
@@ -726,6 +762,7 @@ impl ChunkEncoder {
             tables: self.tables.clone(),
             cache: Default::default(),
             heights: Default::default(),
+            retain_wire: AtomicBool::new(self.retain_wire.load(Ordering::Relaxed)),
             sections: self.sections.clone(),
             column: self.column,
             sky: self.sky,
@@ -2097,6 +2134,91 @@ mod tests {
         assert_eq!(
             lone,
             Some(Tag::Compound(horizon_world::nbt::Compound::new()))
+        );
+    }
+
+    #[test]
+    fn solo_mode_reuses_warmed_batch_then_clears_wire_and_heightmaps() {
+        let mut encoder = encoder();
+        let tables = Arc::new(crate::save::SaveTables::for_heightmaps(
+            crate::assets::Properties::for_tests(&[
+                (true, false, false, false),
+                (false, false, true, true),
+                (false, true, true, true),
+            ]),
+        ));
+        encoder.tables = Some(tables.clone());
+        let mut world = crate::world::World::new(horizon_world::registry::BlockStateId(0), 0);
+        let mut chunk = Chunk::empty(0, 0);
+        chunk.set(1, MIN_Y + 2, 3, 1);
+        chunk.set(2, MIN_Y + 20, 4, 2);
+        world.chunks.insert((0, 0), Arc::new(chunk));
+        let col = &*world.chunks[&(0, 0)];
+
+        // With retention disabled, an uncached encode leaves no wire or heightmaps cached.
+        encoder.set_retain_wire(false);
+        let expected = encoder.body_in(col, &world);
+        assert!(encoder.heights.lock().unwrap().is_empty());
+        assert!(
+            encoder
+                .cache
+                .lock()
+                .unwrap()
+                .values()
+                .all(|e| e.wire.is_none())
+        );
+
+        // Warming stages heightmaps and wire bytes; heightmaps() and section_wire() reuse them
+        // even while retention is disabled, and clear_batch_wire() drops them afterward while
+        // keeping `non_air` entries intact.
+        let job = encoder.job(&[col]).unwrap();
+        job.run();
+        encoder.keep(&job);
+        let warmed_maps = cached_heights(&encoder.heights.lock().unwrap(), col)
+            .expect("warm populated heightmaps");
+        let warmed_wire = encoder
+            .cached(&col.sections[0], |e| e.wire.clone())
+            .expect("warm populated section wire");
+        assert!(Arc::ptr_eq(&encoder.heightmaps(col, &tables), &warmed_maps));
+        assert!(Arc::ptr_eq(
+            &encoder.section_wire(&col.sections[0]).0,
+            &warmed_wire.0
+        ));
+        assert_eq!(encoder.body_in(col, &world), expected);
+        encoder.clear_batch_wire();
+        assert!(encoder.heights.lock().unwrap().is_empty());
+        assert!(
+            encoder
+                .cache
+                .lock()
+                .unwrap()
+                .values()
+                .all(|e| e.wire.is_none())
+        );
+        assert!(!encoder.cache.lock().unwrap().is_empty());
+
+        // Enabling retention keeps entries across clear_batch_wire(), and disabling it clears them.
+        encoder.set_retain_wire(true);
+        assert_eq!(encoder.body_in(col, &world), expected);
+        encoder.clear_batch_wire();
+        assert_eq!(encoder.heights.lock().unwrap().len(), 1);
+        assert!(
+            encoder
+                .cache
+                .lock()
+                .unwrap()
+                .values()
+                .any(|e| e.wire.is_some())
+        );
+        encoder.set_retain_wire(false);
+        assert!(encoder.heights.lock().unwrap().is_empty());
+        assert!(
+            encoder
+                .cache
+                .lock()
+                .unwrap()
+                .values()
+                .all(|e| e.wire.is_none())
         );
     }
 }

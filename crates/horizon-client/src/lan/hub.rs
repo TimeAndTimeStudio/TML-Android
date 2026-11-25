@@ -1973,6 +1973,11 @@ impl Hub {
                 }
             }
         }
+        // In solo singleplayer there is only one receiver, so retaining encoded
+        // wire sections and heightmaps across sends only duplicates chunk RAM.
+        // Update before the empty-batch return so a departing guest releases the
+        // multiplayer cache even if the remaining player stands still.
+        self.encoder.set_retain_wire(self.guests.len() > 1);
         if batches.is_empty() {
             return;
         }
@@ -2009,6 +2014,7 @@ impl Hub {
                 })
             })
             .collect();
+        self.encoder.clear_batch_wire();
         let uses = &mut columns.uses;
         let chunks = &columns.chunks;
         for (i, taken, far, batch) in batches {
@@ -2258,6 +2264,7 @@ impl Hub {
                 .iter()
                 .filter_map(|k| world.chunks.get(k).map(|c| &**c))
                 .collect();
+            self.encoder.set_retain_wire(self.guests.len() > 1);
             self.encoder.warm(&columns);
             for chunk in columns {
                 let key = (chunk.x, chunk.z);
@@ -2300,6 +2307,7 @@ impl Hub {
                     }
                 }
             }
+            self.encoder.clear_batch_wire();
         }
         let Some(log) = world.block_log.as_mut() else {
             return;
