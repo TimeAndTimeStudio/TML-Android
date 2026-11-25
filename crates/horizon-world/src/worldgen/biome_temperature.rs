@@ -1,12 +1,13 @@
 //! Biome temperature sampling and a worker-local vanilla temperature cache.
 use super::{DecodeError, Object, number_text, optional, required};
 use horizon_core::{
+    fast_hash::FxHashMap,
     noise::{Noise, NoiseStack, SimplexNoise},
     position::BlockPos,
     random::LegacyRandom,
 };
 use std::{
-    collections::{HashMap, VecDeque, hash_map::Entry},
+    collections::{VecDeque, hash_map::Entry},
     sync::{Arc, OnceLock},
 };
 
@@ -118,7 +119,7 @@ impl BiomeTemperatureSettings {
 #[derive(Debug)]
 pub struct BiomeTemperature {
     settings: BiomeTemperatureSettings,
-    values: HashMap<i64, f32>,
+    values: FxHashMap<i64, f32>,
     order: VecDeque<i64>,
 }
 impl BiomeTemperature {
@@ -127,7 +128,7 @@ impl BiomeTemperature {
         // most biomes never ask for a temperature.
         Self {
             settings,
-            values: HashMap::new(),
+            values: FxHashMap::default(),
             order: VecDeque::new(),
         }
     }

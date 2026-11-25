@@ -455,6 +455,16 @@ self-contained performance change that applied to this tree:
   `usable_mask` pieces the spline needs were added to `density/mod.rs` (default
   `pointwise_inputs` returns `None`, the spline reports its coordinates), and the test that
   asserts the spline is pointwise keeps working through that split.
+- `a8e58dcedf` (partial) — decoration plan and placement scratch reuse. `FeatureDecorationPlan`
+  pre-resolves each biome/step list to step-local feature indices (`biome_steps`, an
+  `FxHashMap`) instead of resolving on every chunk, and the 3x3 biome scan deduplicates ids in a
+  fixed 128-word bitset with a `BTreeSet` spill, pushing each present biome's step lists directly.
+  A step with at most 512 features selects its draws in eight stack words rather than a
+  `BTreeSet`; `FeaturePlacer`'s single-modifier path collects positions in a 16-entry stack array
+  and spills to `modified` only past that. `BiomeTemperature`'s cache uses `FxHashMap`, and
+  `OreFeature` keeps its vein data and tested bitset in stack arrays up to 64 entries. The
+  commit's stand-in chunk pooling (`generator.rs`, `generator_decoration.rs`) is not portable:
+  it needs the `ImposterProtoChunk`/`is_full_chunk` stand-in refactor, which this tree predates.
 - `fba8c0452c` — `HudBatch::clip_since` cuts quads where they are (kept quads move down with
   `copy_within`, a cut one writes over its own slots, only a growing cut moves the unread rest)
   through a `clip_quad` helper, instead of cloning every quad out and putting each part back.
@@ -509,7 +519,7 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `1181594273` | vehicles | slot test before `passenger_object_present` | this tree has no `persist.passenger_slots` (older passenger graph) |
 | `918ae6d651` | commands | selectors read the player list alone | this tree's `Selector` has no `include_entities` field (later selector refactor) |
 | `1dc5634a22` | hub | route `par_chunks_mut` to the persistent pool | this tree has no `parallel.rs` / `horizon_threads::par_chunks_mut`; the tick helpers are a later addition |
-| `a8e58dcedf` | -15.1% decorate | stand-in chunk pooling, ore/placement scratch | needs the `ImposterProtoChunk`/`is_full_chunk` stand-in refactor and `TargetMemo`/`SphereSquares`, absent here |
+| `a8e58dcedf` | -15.1% decorate | stand-in chunk pooling, ore/placement scratch | decoration plan/placement scratch/biome-cache parts ported (see above); the stand-in chunk pooling itself still needs the `ImposterProtoChunk`/`is_full_chunk` refactor and `TargetMemo`/`SphereSquares`, absent here |
 
 Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`, `5db9bc3f45`,
 `d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
@@ -519,7 +529,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
 `e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`, `15824fc6f3` (with prerequisite
 `24dcd97129`), `8af680316d` (partial), `616c4fec2c`, `fba8c0452c`, `533bb2cdd3`, `ad406095d4`
-(partial), `e08d2e53a5`, `51670062e1`.
+(partial), `e08d2e53a5`, `51670062e1`, `12cd1ed563`, `a8e58dcedf` (partial).
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -549,7 +559,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `cb2132352e` | api/semantics | 1 | 0 | perf(render): contiguous ColumnSlab and zero-alloc scratch in cave occlusion graph (-5.0% RD 34 search_cost) (#20471) |
 | `ebb6ee7a8a` | api/semantics | 1 | 0 | perf(server): share encoded chunk bodies across recipients (#18368) |
 | `c2ee7380c3` | api/semantics | 1 | 0 | perf(shaders): a shader pack's global of literals is initialized by the module, not stored again in every invocation (#19715) |
-| `a8e58dcedf` | api/semantics | 6 | 0 | perf(worldgen): -15.1% decorate wall time via stand-in chunk pooling, ore/placement scratch reuse, and warm-biome shortcut (#20191) |
 | `211e07fc54` | api/semantics | 7 | 0 | perf(worldgen): bounded per-worker CompiledSurfaceRule variant cache and fast column writes (#20190) |
 | `f618858113` | files absent | 4 | 4 | bug(mods): a game with native mods keeps Play with Friends and Horizon's other official parts (#19408) |
 | `937363f340` | files absent | 3 | 3 | fix(tooling): reading a .hzperf capture stops at a limit on what it inflates (#20350) |
