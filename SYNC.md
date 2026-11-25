@@ -321,6 +321,11 @@ self-contained performance change that applied to this tree:
 - `debef4584c` — `tick_remote_entities` builds the orb `followed` list only when the client has
   experience orbs, and the cat `sleepers` list only when a cat is in the level. Adapted to this
   tree's `game/remote.rs` (upstream's `game/network/remote/tick_entities.rs`).
+- `fd3b4ff6a3` — a chunk decoder thread now calls `chunk_decoder_current` and stays at the
+  ordinary priority below the frame, unless `HORIZON_DECODER_PRIORITY=1` asks for the old raise
+  (a parsed-once switch, with a portable parse test and the Windows priority A/B). The
+  thread-swap hunk is adapted from upstream's `game/network/remote_chunks.rs` to this tree's
+  `game/remote_chunks.rs`.
 - `07147ef4af` — `publish_boss_bars` returns before building viewers when no boss-bar source
   exists and nothing has been sent, `boss_viewers` reserves for the host plus its guests,
   `diff_boss_events` returns early for a viewer with no desired bars and no sent map, and an
@@ -387,7 +392,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
-`07147ef4af`, `1bde596b8d`.
+`07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -463,7 +468,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `e095541dc6` | partially absent | 2 | 1 | perf(client): -35 MB RD 32 steady RSS via reusable remote chunk DecodeScratch and palette-safe uniform pooling (#19530) |
 | `616c4fec2c` | partially absent | 4 | 2 | perf(client): -49 to -79 MB solo singleplayer steady RSS via ChunkEncoder wire-cache release (#19528) |
 | `1d0b68bcbb` | partially absent | 10 | 6 | perf(client): Battery Mode halves every pool the client starts (#18465) |
-| `fd3b4ff6a3` | partially absent | 2 | 1 | perf(client): stop raising the chunk decoders above the frame (#18268) |
 | `8af680316d` | partially absent | 2 | 1 | perf(commands): each function tag is expanded once, without recursion (#20088) |
 | `35182ca465` | partially absent | 6 | 1 | perf(creative): index stack deduplication during tab rebuilds (#18459) |
 | `c94d887bda` | partially absent | 22 | 18 | perf(entities): an armor stand nobody has borrowed mutably keeps its network entry (#19864) |
