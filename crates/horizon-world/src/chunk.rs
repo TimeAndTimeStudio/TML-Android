@@ -13,7 +13,7 @@ use horizon_core::{
     storage::PackedStorage,
     ticks::{ChunkTicks, SavedTick, TickTypeId},
 };
-use std::io;
+use std::{collections::HashMap, io};
 
 fn key(value: &str) -> JavaString {
     JavaString::from(value)
@@ -132,17 +132,62 @@ impl PalettedContainer {
         Ok(old)
     }
 
+    /// Maps unpacked cell indices into a minimal first-use palette, hashing each
+    /// distinct palette slot at most once rather than once per cell.
+    fn remap_first_use<'a>(palette_src: &'a [Tag], indices: &mut [u32]) -> Vec<&'a Tag> {
+        let mut palette: Vec<&'a Tag> = Vec::with_capacity(palette_src.len());
+        let mut seen: HashMap<&'a Tag, u32> = HashMap::with_capacity(palette_src.len());
+        let mut old_to_new = vec![u32::MAX; palette_src.len()];
+        for id in indices.iter_mut() {
+            let old = *id as usize;
+            let mapped = old_to_new[old];
+            if mapped != u32::MAX {
+                *id = mapped;
+            } else {
+                let value = &palette_src[old];
+                let new_id = *seen.entry(value).or_insert_with(|| {
+                    palette.push(value);
+                    palette.len() as u32 - 1
+                });
+                old_to_new[old] = new_id;
+                *id = new_id;
+            }
+        }
+        palette
+    }
+
     /// Rebuild a minimal palette in first-use order, preserving every entry.
     pub fn compact(&mut self) -> io::Result<()> {
-        let values = (0..self.entries)
-            .map(|i| self.get(i).cloned())
-            .collect::<io::Result<Vec<_>>>()?;
-        let mut compact = Self::uniform(values[0].clone(), self.entries, self.min_bits)?;
-        for (i, value) in values.into_iter().enumerate() {
-            compact.set(i, value)?;
-        }
-        compact.extra = std::mem::take(&mut self.extra);
-        *self = compact;
+        let Some(storage) = &self.storage else {
+            self.palette.truncate(1);
+            return Ok(());
+        };
+        let mut stack = [0u32; 4096];
+        let mut heap;
+        let indices: &mut [u32] = if self.entries <= stack.len() {
+            let slice = &mut stack[..self.entries];
+            storage.unpack_into(slice);
+            slice
+        } else {
+            heap = storage.unpack();
+            &mut heap
+        };
+        let new_palette: Vec<Tag> = Self::remap_first_use(&self.palette, indices)
+            .into_iter()
+            .cloned()
+            .collect();
+        let bits = bits_for_palette(new_palette.len(), self.min_bits);
+        self.storage = if bits == 0 {
+            None
+        } else {
+            let mut packed =
+                PackedStorage::new(bits, self.entries).map_err(|e| invalid(e.to_string()))?;
+            for (index, &id) in indices.iter().enumerate() {
+                packed.write(index, id);
+            }
+            Some(packed)
+        };
+        self.palette = new_palette;
         Ok(())
     }
 
@@ -599,32 +644,42 @@ impl<'r> BlockSection<'r> {
         Ok(added)
     }
     pub fn compact(&mut self) -> io::Result<()> {
-        let values: Vec<_> = (0..4096).map(|i| self.get(i).unwrap()).collect();
-        self.palette.clear();
-        self.last = None;
-        self.counts.clear();
-        self.free.clear();
-        for state in &values {
-            if let Some(id) = id_in(&self.palette, &self.counts, &mut self.last, *state) {
-                self.counts[id as usize] += 1;
+        let Some(storage) = &self.storage else {
+            return Ok(());
+        };
+        let mut indices = [0u32; 4096];
+        storage.unpack_into(&mut indices);
+        let mut old_to_new = vec![u32::MAX; self.palette.len()];
+        let mut new_palette = Vec::with_capacity(self.palette.len());
+        let mut new_counts = Vec::with_capacity(self.palette.len());
+        for id in indices.iter_mut() {
+            let old = *id as usize;
+            let mapped = old_to_new[old];
+            if mapped != u32::MAX {
+                *id = mapped;
+                new_counts[mapped as usize] += 1;
             } else {
-                self.palette.push(*state);
-                self.counts.push(1);
-                self.last = Some((*state, self.palette.len() as u32 - 1));
+                let new_id = new_palette.len() as u32;
+                old_to_new[old] = new_id;
+                new_palette.push(self.palette[old]);
+                new_counts.push(1);
+                *id = new_id;
             }
         }
-        let bits = bits_for_palette(self.palette.len(), 4);
+        let bits = bits_for_palette(new_palette.len(), 4);
         self.storage = if bits == 0 {
             None
         } else {
-            let mut storage = PackedStorage::new(bits, 4096).map_err(|e| invalid(e.to_string()))?;
-            let mut last = None;
-            for (i, state) in values.iter().enumerate() {
-                let id = id_in(&self.palette, &self.counts, &mut last, *state).unwrap();
-                storage.set(i, id).unwrap();
+            let mut packed = PackedStorage::new(bits, 4096).map_err(|e| invalid(e.to_string()))?;
+            for (i, &id) in indices.iter().enumerate() {
+                packed.write(i, id);
             }
-            Some(storage)
+            Some(packed)
         };
+        self.last = new_palette.first().map(|&state| (state, 0));
+        self.palette = new_palette;
+        self.counts = new_counts;
+        self.free.clear();
         Ok(())
     }
     pub fn to_nbt(&self) -> io::Result<Tag> {
@@ -994,5 +1049,123 @@ mod tests {
             get_times[1][0],
             get_times[0][0] / get_times[1][0]
         );
+    }
+
+    /// The pre-optimization `PalettedContainer::compact`, kept to compare against.
+    fn baseline_paletted_compact(container: &mut PalettedContainer) -> io::Result<()> {
+        let values = (0..container.entries)
+            .map(|i| container.get(i).cloned())
+            .collect::<io::Result<Vec<_>>>()?;
+        let mut compact =
+            PalettedContainer::uniform(values[0].clone(), container.entries, container.min_bits)?;
+        for (i, value) in values.into_iter().enumerate() {
+            compact.set(i, value)?;
+        }
+        compact.extra = std::mem::take(&mut container.extra);
+        *container = compact;
+        Ok(())
+    }
+
+    /// The pre-optimization `BlockSection::compact`, kept to compare against.
+    fn baseline_section_compact(section: &mut BlockSection<'_>) -> io::Result<()> {
+        let values: Vec<_> = (0..4096).map(|i| section.get(i).unwrap()).collect();
+        section.palette.clear();
+        section.last = None;
+        section.counts.clear();
+        section.free.clear();
+        for state in &values {
+            if let Some(id) = id_in(&section.palette, &section.counts, &mut section.last, *state) {
+                section.counts[id as usize] += 1;
+            } else {
+                section.palette.push(*state);
+                section.counts.push(1);
+                section.last = Some((*state, section.palette.len() as u32 - 1));
+            }
+        }
+        let bits = bits_for_palette(section.palette.len(), 4);
+        section.storage = if bits == 0 {
+            None
+        } else {
+            let mut storage = PackedStorage::new(bits, 4096).map_err(|e| invalid(e.to_string()))?;
+            let mut last = None;
+            for (i, state) in values.iter().enumerate() {
+                let id = id_in(&section.palette, &section.counts, &mut last, *state).unwrap();
+                storage.set(i, id).unwrap();
+            }
+            Some(storage)
+        };
+        Ok(())
+    }
+
+    /// The first-use remap in `compact` must agree with the old rebuild on every
+    /// observable field, for a mixed container (dead slots), a loaded palette with
+    /// one tag in two slots, and a section with a reclaimed palette slot.
+    #[test]
+    fn compact_matches_baseline() {
+        let make_tag = |i: i32| Tag::Int(i);
+
+        // A mixed container: state 23 becomes an unused (dead) slot.
+        let mut pc = PalettedContainer::uniform(make_tag(0), 4096, 4).unwrap();
+        for i in 0..4096 {
+            pc.set(i, make_tag((i % 24) as i32)).unwrap();
+        }
+        for i in (23..4096).step_by(24) {
+            pc.set(i, make_tag(0)).unwrap();
+        }
+        let mut pc_base = pc.clone();
+        let mut pc_fast = pc.clone();
+        baseline_paletted_compact(&mut pc_base).unwrap();
+        pc_fast.compact().unwrap();
+        assert_eq!(pc_fast.to_nbt(), pc_base.to_nbt());
+        assert_eq!(pc_fast.palette_len(), pc_base.palette_len());
+        assert_eq!(pc_fast.bits(), pc_base.bits());
+
+        // A loaded palette with one tag in two slots compacts to one slot.
+        let mut loaded = Compound::new();
+        loaded.insert(
+            key("palette"),
+            Tag::List(vec![make_tag(1), make_tag(2), make_tag(1)]),
+        );
+        let mut words = PackedStorage::new(4, 4096).unwrap();
+        for i in 0..4096 {
+            words.set(i, (i % 3) as u32).unwrap();
+        }
+        loaded.insert(
+            key("data"),
+            Tag::LongArray(words.words().iter().map(|&v| v as i64).collect()),
+        );
+        let loaded = PalettedContainer::from_nbt(&Tag::Compound(loaded), 4096, 4).unwrap();
+        let mut loaded_base = loaded.clone();
+        let mut loaded_fast = loaded;
+        baseline_paletted_compact(&mut loaded_base).unwrap();
+        loaded_fast.compact().unwrap();
+        assert_eq!(loaded_fast.palette_len(), 2);
+        assert_eq!(loaded_fast.to_nbt(), loaded_base.to_nbt());
+
+        // A section with a reclaimed (free) palette slot.
+        let registry = benchmark_registry(64);
+        let mut sec_base = BlockSection::uniform(BlockStateId(0), &registry).unwrap();
+        let mut sec_fast = BlockSection::uniform(BlockStateId(0), &registry).unwrap();
+        for i in 0..4096 {
+            let s = BlockStateId(((i * 7) % 24) as u32);
+            sec_base.set(i, s).unwrap();
+            sec_fast.set(i, s).unwrap();
+        }
+        for i in 0..4096 {
+            if sec_base.get(i).unwrap() == BlockStateId(23) {
+                sec_base.set(i, BlockStateId(0)).unwrap();
+                sec_fast.set(i, BlockStateId(0)).unwrap();
+            }
+        }
+        baseline_section_compact(&mut sec_base).unwrap();
+        sec_fast.compact().unwrap();
+        assert_eq!(sec_fast.to_nbt().unwrap(), sec_base.to_nbt().unwrap());
+        assert_eq!(sec_fast.bits(), sec_base.bits());
+        assert_eq!(sec_fast.palette, sec_base.palette);
+        assert_eq!(sec_fast.counts, sec_base.counts);
+        assert_eq!(sec_fast.free, sec_base.free);
+        for i in 0..4096 {
+            assert_eq!(sec_fast.get(i).unwrap(), sec_base.get(i).unwrap());
+        }
     }
 }
