@@ -14321,10 +14321,7 @@ impl Game<'_> {
                 }
                 if let Some(view) = view {
                     let (lo, hi) = weather::column_bounds(x, y0, y1, z, eye);
-                    if !view.intersects(
-                        glam::Vec3::from_array(lo),
-                        glam::Vec3::from_array(hi),
-                    ) {
+                    if !view.intersects(glam::Vec3::from_array(lo), glam::Vec3::from_array(hi)) {
                         continue;
                     }
                 }
@@ -15989,10 +15986,8 @@ impl Game<'_> {
             // over the geometry Horizon drew itself (the eyes were invisible with Solas).
             let start = entities.len();
             let (crystals, eyes) = self.end_geometry(camera, &mut entities);
-            if crystals > 0 {
-            }
-            if eyes > 0 {
-            }
+            if crystals > 0 {}
+            if eyes > 0 {}
         }
         let weather = if !title && self.dim == Dim::Overworld && self.settings.horizon.weather {
             horizon_client::spans::time("weather", || self.weather_geometry(camera, alpha))
@@ -21553,23 +21548,23 @@ impl Loading {
         event_loop.set_control_flow(ControlFlow::Poll);
     }
 
-/// When the next frame of the title menu drawn while the resources load is due, if that is still
-/// ahead (`last`: when the last one started). On Android at most 60 a second: it ran uncapped
-/// until the game's own frame limit took over, heating the phone while it prepared. Adapted from
-/// Vasysik/horizon-android (its commit f5cf0231bc), MIT, copyright (c) 2026 Ludovic Marie and
-/// the Horizon contributors.
-#[cfg(target_os = "android")]
-fn loading_frame_due(last: Option<Instant>) -> Option<Instant> {
-    let next = last? + Duration::from_nanos(1_000_000_000 / 60);
-    (Instant::now() < next).then_some(next)
-}
+    /// When the next frame of the title menu drawn while the resources load is due, if that is still
+    /// ahead (`last`: when the last one started). On Android at most 60 a second: it ran uncapped
+    /// until the game's own frame limit took over, heating the phone while it prepared. Adapted from
+    /// Vasysik/horizon-android (its commit f5cf0231bc), MIT, copyright (c) 2026 Ludovic Marie and
+    /// the Horizon contributors.
+    #[cfg(target_os = "android")]
+    fn loading_frame_due(last: Option<Instant>) -> Option<Instant> {
+        let next = last? + Duration::from_nanos(1_000_000_000 / 60);
+        (Instant::now() < next).then_some(next)
+    }
 
-/// When the next frame of the title menu drawn while the resources load is due: at once here
-/// (see the Android one).
-#[cfg(not(target_os = "android"))]
-fn loading_frame_due(_last: Option<Instant>) -> Option<Instant> {
-    None
-}
+    /// When the next frame of the title menu drawn while the resources load is due: at once here
+    /// (see the Android one).
+    #[cfg(not(target_os = "android"))]
+    fn loading_frame_due(_last: Option<Instant>) -> Option<Instant> {
+        None
+    }
     fn draw(&mut self) {
         let console = self.show_startup_console();
         let diagnostic_started = Instant::now();
@@ -23230,10 +23225,12 @@ impl Game<'_> {
             self.modifiers = horizon_client::input_mode::held_modifiers(&self.physical_keys);
         }
     }
-    /// Android: indirect multi-draws are off (they measured slower on an Adreno 710), and with
-    /// them occlusion culling never runs. Once the world has run a while, the pair is tried for
-    /// ten seconds and kept only if the frame time holds (the spirit of upstream's GPU Culling
-    /// Auto): the log says which way it went.
+    /// Android: indirect multi-draws are off on the platform's default (they measured slower on
+    /// an Adreno 710), and with them occlusion culling never runs. Once the world has warmed
+    /// up, the pair is tried and kept unless the frame time clearly gets worse or it hides
+    /// almost nothing (the spirit of upstream's GPU Culling Auto): the log says which way it
+    /// went. This is the only place the choice is made, so a phone always ends up with the
+    /// fastest of the two on its own GPU.
     fn trial_gpu_culling(&mut self) {
         if !cfg!(target_os = "android") {
             return;
@@ -23250,9 +23247,11 @@ impl Game<'_> {
             if renderer.multi_draw {
                 return;
             }
+            // Long enough for the world to load and the frame time to settle, short enough
+            // that a phone is culling within the first few seconds rather than after 25.
             let at = *self
                 .draws_trial_at
-                .get_or_insert(now + Duration::from_secs(25));
+                .get_or_insert(now + Duration::from_secs(5));
             if now < at {
                 return;
             }
@@ -23278,21 +23277,26 @@ impl Game<'_> {
             );
             return;
         };
-        if now.duration_since(started) < Duration::from_secs(10) {
+        if now.duration_since(started) < Duration::from_secs(12) {
             return;
         }
-        let keep = ms <= self.draws_trial_baseline * 1.02;
+        // Keep it when the frame time holds (vsync often hides a gain entirely) or when the
+        // culling is actually hiding a useful share of the frame's solid indices.
+        let hidden = renderer.occlusion_stats().map_or(0.0, |(_, share)| share);
+        let keep = ms <= self.draws_trial_baseline * 1.03 || hidden >= 0.06;
         if !keep {
             renderer.set_indirect_draws(false);
         }
         log::info!(
-            "Horizon renderer: {} ({:.1} ms a frame before, {ms:.1} ms in the trial)",
+            "Horizon renderer: {} ({:.1} ms a frame before, {ms:.1} ms in the trial, {:.0}% of \
+             solid indices heeded)",
             if keep {
                 "kept indirect multi-draws with occlusion culling"
             } else {
                 "dropped indirect multi-draws; sections are drawn directly"
             },
             self.draws_trial_baseline,
+            hidden * 100.0,
         );
         // Once a run: the trial's answer stands until the next start.
         self.draws_trial_started = Some(now + Duration::from_secs(86_400));

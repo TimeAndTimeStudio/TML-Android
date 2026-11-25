@@ -409,6 +409,18 @@ self-contained performance change that applied to this tree:
   implementations are kept under `cfg(test) mod reference` and compared bit-for-bit across the
   256 wrap, `y == 0`, `-0.0` and Far-Lands coordinates; this tree's vanilla seed and
   batched-volume tests still pass. `GradientTable::permute`/`gradient` are removed (unused).
+- `ad406095d4` (partial) — the particle tick half: `tick()` skips taking and re-allocating the
+  emitter, particle and `pending` buffers when they are empty, `tick_starters` retains starters in
+  place with `retain_mut` instead of re-pushing every live one, and the `pending` buffer is kept
+  warm across ticks (shrunk only after a >4096 bulge). `make` resolves a particle's sprite-set
+  index once and hands it to `sprite_from_set_index`, so the item, vibration, firefly and default
+  spawn paths no longer redo the set lookup; `fluid_kind`/`fluid_of`/`collision_top_of` let the
+  bubble, bubble-column, underwater and water-drop behaviours read one block state instead of
+  re-fetching it through three accessors, and the geyser, gust and explosion-seed emitters build
+  their `ParticleOptions` once per burst. Dropped: the render-side zero-alloc billboard /
+  dense-light-cache rewrite, which needs particle groups, the additive vertex buffer, occlusion
+  culling and polytone stores this tree lacks (`particles.rs` diverges by ~1500 lines); porting it
+  blind would regress more than it saves.
 - `fba8c0452c` — `HudBatch::clip_since` cuts quads where they are (kept quads move down with
   `copy_within`, a cut one writes over its own slots, only a growing cut moves the unread rest)
   through a `clip_quad` helper, instead of cloning every quad out and putting each part back.
@@ -450,7 +462,7 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `12cd1ed563` | density | `IntervalSelectSampler` duplicate threshold scans | LerpSampler half ported; the IntervalSelect half needs the `needed`-mask sampler refactor, absent here |
 | `51670062e1` | 1.61x scalar | flat `SplineSampler` arena | needs `sample_with`/`usable_mask`, absent here |
 | `ebb6ee7a8a` | server | share encoded chunk bodies | needs `Body::Shared`/`Encoder::bodies_with`, absent here |
-| `3fa98d1bd8`, `f71ddcce2d`, `ad406095d4`, `dedb0375a4` | font/particles/sprites | large multi-region rewrites | diverge from this tree's older forms, deferred |
+| `3fa98d1bd8`, `f71ddcce2d`, `dedb0375a4` | font/sprites | large multi-region rewrites | diverge from this tree's older forms, deferred |
 | `e0c1233a27` | -22..-33 MB | zero-alloc `EntityBatch` LUT + Schwartzian sort | needs the 16-material/native-terrain overlay refactor; this tree's `entity_batch.rs` is the older 10-material, 400-line form |
 | `d939fd378d` | +2.5..3.3% RD | faster `ChunkMap` lookups | needs the toroidal-grid/hash refactor in `world.rs`/`chunk_map.rs`, absent here |
 | `8e0b8ff5a5` | +1.1..4.3% RD16 | caching lightmap and skipping unchanged per-frame GPU uploads | lightmap `LightmapKey` cache, the hand/crosshair global-upload skip and the sunrise-fan skip are ported (see the list above); the sprite tick cache and the remaining per-frame upload skip still need this tree's older `gfx.rs` (488 lines, 8 conflict regions) |
@@ -472,7 +484,8 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
 `e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`, `15824fc6f3` (with prerequisite
-`24dcd97129`), `8af680316d` (partial), `616c4fec2c`, `fba8c0452c`, `533bb2cdd3`.
+`24dcd97129`), `8af680316d` (partial), `616c4fec2c`, `fba8c0452c`, `533bb2cdd3`, `ad406095d4`
+(partial).
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -499,7 +512,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `d939fd378d` | api/semantics | 2 | 0 | perf(render): +2.5% to +3.3% FPS and 1.59x faster lookups via safe toroidal ChunkMap cache (#19515) |
 | `f43817376a` | api/semantics | 1 | 0 | perf(render): -13 to -25 MB steady RSS and +0.9% FPS via bucketed Uploads staging ring with idle trimming (#19516) |
 | `e0c1233a27` | api/semantics | 1 | 0 | perf(render): -22 to -33 MB steady RSS and zero-alloc EntityBatch LUT + Schwartzian sort (#19520) |
-| `ad406095d4` | api/semantics | 1 | 0 | perf(render): -5.6% multi-thread particle tick CPU and zero-alloc billboard/light-cache render fast paths (#19532) |
 | `dedb0375a4` | api/semantics | 1 | 0 | perf(render): -8.2% to -8.6% sprite and CTM pack load time and lower peak RAM via streaming layout (#19534) |
 | `cb2132352e` | api/semantics | 1 | 0 | perf(render): contiguous ColumnSlab and zero-alloc scratch in cave occlusion graph (-5.0% RD 34 search_cost) (#20471) |
 | `ebb6ee7a8a` | api/semantics | 1 | 0 | perf(server): share encoded chunk bodies across recipients (#18368) |

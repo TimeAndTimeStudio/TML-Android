@@ -58,7 +58,11 @@ pub const TILED_MIN_SECTIONS: usize = 1600;
 /// Phones draw sections directly (no indirect multi-draws) unless a trial turns them on, and a
 /// phone's render distance leaves a few hundred sections in view: testing them is cheap, and
 /// the tiled threshold above would leave occlusion culling never running at all.
-pub const PHONE_MIN_SECTIONS: usize = 96;
+pub const PHONE_MIN_SECTIONS: usize = 64;
+/// The share of solid indices culling must hide for its test to stay worth its cost. A phone's
+/// shorter render distance sees fewer sections to hide behind one another, so it keeps running
+/// at a lower share than the desktop default (`MIN_SHARE`).
+pub const PHONE_MIN_HIDDEN_SHARE: f32 = 0.06;
 /// Boxes over more than this share of the screen count as seen untested.
 const BIG: f32 = 0.25;
 /// Results read back at once, some frames late so the CPU never waits.
@@ -154,6 +158,9 @@ pub struct Cull {
     pub hidden: ([usize; 2], f32),
     /// Cull every frame, whatever the hidden share (A/B checks).
     pub always: bool,
+    /// Frames whose last result hid less than this share stop testing every
+    /// frame and only probe now and then (a phone's lower bar keeps it running).
+    pub min_share: f32,
     /// Frames with fewer sections in view than this do not cull.
     pub min_sections: usize,
 }
@@ -366,6 +373,7 @@ impl Cull {
             stamp: 0,
             hidden: ([0; 2], 0.0),
             always: false,
+            min_share: MIN_SHARE,
             min_sections: 0,
         }
     }
@@ -409,7 +417,7 @@ impl Cull {
         self.test_slots.clear();
         self.test_indices.clear();
         self.total = 0;
-        self.probe = !self.always && self.hidden.1 < MIN_SHARE;
+        self.probe = !self.always && self.hidden.1 < self.min_share;
         !self.probe || self.stamp.is_multiple_of(PROBE)
     }
 

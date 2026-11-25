@@ -124,7 +124,6 @@ fn indirect_draws_wanted() -> bool {
     !cfg!(target_os = "android")
 }
 
-
 /// Two solid passes only where a discard costs the GPU its hidden surface removal: Apple's tiled
 /// GPUs, behind Metal, and Adreno (Vasysik's Android fork measured 25-27% less GPU time on an
 /// Adreno 710). A Mali-G57 gained no GPU time from it, and PowerVR hasn't been measured. Elsewhere
@@ -1973,9 +1972,7 @@ async fn open_backend(
     // What a pack's programs may do: Mali-G57 (and other mobile GPUs without vertex stores)
     // has no storage images in a vertex shader; the translator drops such writes instead of
     // letting the pipeline fail (Solas' shadow voxelization).
-    horizon_shaders::set_vertex_storage(
-        features.contains(wgpu::Features::VERTEX_WRITABLE_STORAGE),
-    );
+    horizon_shaders::set_vertex_storage(features.contains(wgpu::Features::VERTEX_WRITABLE_STORAGE));
     let driver = format!("{} {}", info.driver, info.driver_info);
     crate::hud::set_gpu_texture_side(adapter.limits().max_texture_dimension_2d);
     startup_step(format_args!(
@@ -4135,6 +4132,9 @@ impl Renderer {
                     } else {
                         0
                     };
+                    if cfg!(target_os = "android") {
+                        cull.min_share = cull::PHONE_MIN_HIDDEN_SHARE;
+                    }
                 }
                 cull
             });
@@ -4149,7 +4149,11 @@ impl Renderer {
                  in fragment {}, indirect multi-draw {})",
                 on_off(flags.contains(wgpu::DownlevelFlags::VERTEX_STORAGE)),
                 on_off(flags.contains(wgpu::DownlevelFlags::FRAGMENT_WRITABLE_STORAGE)),
-                on_off(device.features().contains(wgpu::Features::INDIRECT_FIRST_INSTANCE)),
+                on_off(
+                    device
+                        .features()
+                        .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE)
+                ),
             );
         }
         let depth = Self::depth(&device, &config);
@@ -4767,6 +4771,16 @@ impl Renderer {
     /// `trial_gpu_culling`).
     pub fn cull_available(&self) -> bool {
         self.cull.is_some()
+    }
+
+    /// What occlusion culling's last read-back test hid: the boxes it drew and did not
+    /// see, and the share of the frame's solid indices those boxes kept out of the
+    /// passes (`game.rs trial_gpu_culling` keeps the pair when this pays).
+    pub fn occlusion_stats(&self) -> Option<([usize; 2], f32)> {
+        self.cull
+            .as_ref()
+            .filter(|_| self.cull_on)
+            .map(|cull| cull.hidden)
     }
 
     pub fn set_indirect_draws(&mut self, on: bool) {
@@ -5818,10 +5832,7 @@ impl Renderer {
     }
 
     pub fn skins_entities(&self) -> bool {
-        self.entity_skin.is_some()
-            && !self.frame_gen.on
-            && true
-            && true
+        self.entity_skin.is_some() && !self.frame_gen.on && true && true
     }
 
     /// Whether the layers tagged `OIT_ENTITY` (the eyes render type's, horse
@@ -6360,9 +6371,7 @@ impl Renderer {
         let view_proj = views.primary().view_proj(pose);
         laps.lap("r_acquire");
         // TAA runs where the world post pass does, not under a shader pack's own.
-        let taa = !frame.title
-            && true
-            && true;
+        let taa = !frame.title && true && true;
         let jittered = self.world_post.jitter(
             [self.config.width, self.config.height],
             taa,
@@ -6441,7 +6450,11 @@ impl Renderer {
                 views.primary().tan_half_fov,
             ],
             // The sky turns with the view bob and the nausea spin, as the world does.
-            inverse_view: views.primary().posed_view(pose).inverse().to_cols_array_2d(),
+            inverse_view: views
+                .primary()
+                .posed_view(pose)
+                .inverse()
+                .to_cols_array_2d(),
             sunrise: frame.sky.sunrise_color,
             sun: [sun.x, sun.y, sun.z, frame.sky.star_brightness],
             fog_ends: [
@@ -7025,7 +7038,12 @@ impl Renderer {
             // The test runs through indirect multi-draws, or for a pack that asked for it
             // (`HORIZON_PACK_CULL=1`, skipping sections between frames).
             let testing = self.cull_on && (self.multi_draw || false);
-            match self.cull.as_ref().filter(|_| testing).map(|cull| cull.hidden) {
+            match self
+                .cull
+                .as_ref()
+                .filter(|_| testing)
+                .map(|cull| cull.hidden)
+            {
                 // What the last test hid: the boxes it saw and did not, and the share of solid
                 // indices those boxes kept out of the passes.
                 Some(([hidden, seen], share)) if hidden + seen > 0 => log::info!(
@@ -7110,9 +7128,8 @@ impl Renderer {
         let entities = frame.entities;
         // GameRenderer.useImprovedTransparency. A shader pack keeps its own
         // path.
-        let hdr_lighting = true
-            && true
-            && std::env::var_os("HORIZON_HDR_LIGHTING").is_none_or(|v| v != "0");
+        let hdr_lighting =
+            true && true && std::env::var_os("HORIZON_HDR_LIGHTING").is_none_or(|v| v != "0");
         if let Some(hdr) = &mut self.hdr {
             hdr.lighting = hdr_lighting;
         }
@@ -7481,8 +7498,7 @@ impl Renderer {
             );
         }
         // On Adreno, shader packs keep the draws they had: its bar is for frames without one.
-        let flat_by_count = !adreno::adreno_vulkan(&self.info)
-            || (true && true);
+        let flat_by_count = !adreno::adreno_vulkan(&self.info) || (true && true);
         let flat_frame = match &mut self.flat {
             Some(flat)
                 if self.flat_on
@@ -7846,12 +7862,7 @@ impl Renderer {
             if late_sky.is_none()
                 && (frame.title || (sky_visible && (frame.skybox || frame.end_sky)))
             {
-                if !frame.title
-                    && frame.skybox
-                    && !pack_draws_sky
-                    && !native_sky_pass
-                    && true
-                {
+                if !frame.title && frame.skybox && !pack_draws_sky && !native_sky_pass && true {
                     {
                         pass.set_pipeline(&self.sky_base);
                         pass.draw(0..3, 0..1);
@@ -7879,8 +7890,7 @@ impl Renderer {
                         let total = (celestial_vertices as u32 / 4) * 6;
                         // A pack's `sun=false`/`moon=false` hides that body; the End's flashes
                         // are neither and keep their whole range.
-                        let first = if !frame.end_sky && (own_sun || !true)
-                        {
+                        let first = if !frame.end_sky && (own_sun || !true) {
                             6.min(total)
                         } else {
                             0
@@ -7898,11 +7908,7 @@ impl Renderer {
                     pass.set_bind_group(0, &self.group, &[]);
                 }
                 let own_stars = false;
-                if !frame.title
-                    && frame.stars.is_some()
-                    && !own_stars
-                    && true
-                {
+                if !frame.title && frame.stars.is_some() && !own_stars && true {
                     self.stars.draw(&mut pass);
                     pass.set_bind_group(0, &self.group, &[]);
                 }
@@ -8763,9 +8769,7 @@ impl Renderer {
                 Some(copy_frame(&self.device, &mut encoder, &texture, size))
             });
         let first_frame = self.first_frame == FirstFrame::Submit;
-        if flat_frame
-            && let Some(flat) = &mut self.flat
-        {
+        if flat_frame && let Some(flat) = &mut self.flat {
             // From here the encoder is submitted either locally or in queue order.
             flat.submitted();
         }
@@ -9195,7 +9199,12 @@ impl Renderer {
                 timing.as_mut(),
             );
             if frame.menu_blur_cache && overlay.real {
-                blur.keep(encoder, target_texture, [self.config.width, self.config.height], radius);
+                blur.keep(
+                    encoder,
+                    target_texture,
+                    [self.config.width, self.config.height],
+                    radius,
+                );
             }
         } else if let Some(blur) = &mut self.menu_blur {
             blur.release();
