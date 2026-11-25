@@ -954,6 +954,9 @@ impl Game<'_> {
     /// `SculkSensorBlock.stepOn` and `SculkShriekerBlock.stepOn`: standing on
     /// them is heard (or seen) every tick.
     fn sculk_step_on(&mut self) {
+        if self.sculk.index.set.is_empty() {
+            return;
+        }
         self.sculk_step_on_player();
         let mut standing: Vec<(Who, [f64; 3])> = Vec::new();
         for m in &self.mobs {
@@ -961,20 +964,23 @@ impl Game<'_> {
                 standing.push((Who::Mob(m.id), [m.position.x, m.position.y, m.position.z]));
             }
         }
-        self.sculk_stand_on(standing);
+        self.sculk_stand_on(&standing);
     }
     /// `stepOn` for the player in place: the host, or a guest swapped in
     /// (`guest_server_tick`), as a server has no player of its own.
     pub(super) fn sculk_step_on_player(&mut self) {
+        if self.sculk.index.set.is_empty() {
+            return;
+        }
         if let Some(p) = self.player.as_ref()
             && p.ground.on_ground
         {
             let at = [p.position.x, p.position.y, p.position.z];
-            self.sculk_stand_on(vec![(Who::Player, at)]);
+            self.sculk_stand_on(&[(Who::Player, at)]);
         }
     }
-    fn sculk_stand_on(&mut self, standing: Vec<(Who, [f64; 3])>) {
-        for (who, at) in standing {
+    fn sculk_stand_on(&mut self, standing: &[(Who, [f64; 3])]) {
+        for &(who, at) in standing {
             // getOnPosLegacy: 0.2 below the feet.
             let key = (
                 at[0].floor() as i32,

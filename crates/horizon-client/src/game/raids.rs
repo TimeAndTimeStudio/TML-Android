@@ -1146,6 +1146,11 @@ impl Game<'_> {
         }
         Some((id, raid_name_tag(raid.bar.name), raid.bar.progress))
     }
+    /// Whether this level holds any raid at all (`raid_boss_at` needs one
+    /// nearby).
+    pub(super) fn has_raids(&self) -> bool {
+        !self.raiding.raids.map.is_empty()
+    }
     /// A firework a villager launches to celebrate (`CelebrateVillagersSurvivedRaid`).
     pub(super) fn villager_firework(&mut self, at: [f64; 3], color: usize, flight: u8) {
         let mut stack = horizon_client::items::ItemStack::new("minecraft:firework_rocket", 1);

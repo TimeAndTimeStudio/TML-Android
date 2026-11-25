@@ -2677,6 +2677,11 @@ impl Game<'_> {
                 .map_or(1.0, |d| (d.health / MAX_HEALTH).clamp(0.0, 1.0)),
         )
     }
+    /// Whether this dimension's Ender Dragon fight could give a viewer a bar:
+    /// `dragon_boss_progress` needs a loaded, not-yet-won fight in the End.
+    pub(super) fn dragon_bar_possible(&self) -> bool {
+        self.dim == Dim::End && self.fight.loaded && !self.fight.killed
+    }
     /// `BossHealthOverlay.shouldPlayMusic`.
     pub(super) fn boss_music(&self) -> bool {
         self.boss_overlay.should_play_music()

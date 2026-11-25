@@ -460,6 +460,19 @@ impl Game<'_> {
 
     // ---- ServerBossEvent delivery ------------------------------------------------
 
+    /// Mirrors the four boss-bar sources checked in [`Self::boss_events_for`]:
+    /// custom `/bossbar`s, an Ender Dragon fight in this dimension, active
+    /// Overworld raids, and live Wither mobs.
+    fn has_boss_bar_sources(&self) -> bool {
+        !self.bosses.bars.bars.is_empty()
+            || self.dragon_bar_possible()
+            || (self.dim == Dim::Overworld && self.has_raids())
+            || self
+                .mobs
+                .iter()
+                .any(|m| !m.removed && m.alive() && m.species() == Species::Wither)
+    }
+
     /// Tell every viewer the boss events they should be seeing. The window
     /// that simulates the world applies them to its own overlay; everyone
     /// else gets `ClientboundBossEventPacket`s.
@@ -468,6 +481,9 @@ impl Game<'_> {
             return;
         }
         self.load_bossbars();
+        if !self.has_boss_bar_sources() && self.bosses.sent.is_empty() {
+            return;
+        }
         let now = boss_overlay::now_millis();
         let viewers = self.boss_viewers();
         let live: HashSet<u128> = viewers.iter().map(|v| v.uuid).collect();
@@ -494,7 +510,8 @@ impl Game<'_> {
         }
     }
     fn boss_viewers(&self) -> Vec<Viewer> {
-        let mut out = Vec::new();
+        let mut out =
+            Vec::with_capacity(1 + self.lan.as_ref().map_or(0, |host| host.hub.guests.len()));
         // While `as_guest` has swapped a guest in, the host's own position
         // is not in place. Their overlay updates once the tick puts it back.
         let local =
@@ -622,6 +639,9 @@ impl Game<'_> {
     /// The packets that take `viewer` from what it was last sent to `desired`
     /// (`ServerBossEvent`'s broadcasts).
     fn diff_boss_events(&mut self, viewer: &Viewer, desired: Vec<Offer>) -> Vec<play::BossEvent> {
+        if desired.is_empty() && !self.bosses.sent.contains_key(&viewer.uuid) {
+            return Vec::new();
+        }
         let full = viewer.local;
         let dim = self.dim;
         let sent = self.bosses.sent.entry(viewer.uuid).or_default();
@@ -673,6 +693,10 @@ impl Game<'_> {
                 ));
             }
             sent.insert(id, offer);
+        }
+        let empty = sent.is_empty();
+        if empty {
+            self.bosses.sent.remove(&viewer.uuid);
         }
         out
     }
