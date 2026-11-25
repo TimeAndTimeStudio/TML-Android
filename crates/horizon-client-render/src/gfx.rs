@@ -8405,7 +8405,11 @@ impl Renderer {
                         quads(pass, &f.additive[s], additive_quads, world_quads);
                         self.weather
                             .draw_with(pass, &f.weather[s], &self.entity_group);
-                        if let Some(b) = frame.border.as_ref().filter(|_| !frame.title) {
+                        if let Some(b) = frame
+                            .border
+                            .as_ref()
+                            .filter(|b| !frame.title && !b.sides.is_empty())
+                        {
                             pass.set_pipeline(&f.border[s]);
                             pass.set_bind_group(0, &self.border_group, &[]);
                             pass.set_vertex_buffer(0, self.border_vertices.slice(..));
@@ -8418,25 +8422,27 @@ impl Renderer {
                     // A frame with nothing in the feature stage (no text, particles, items,
                     // entities, weather, border or lightning in the translucent layers) skips
                     // that pass of its own altogether.
-                    let any_features = text_quads > 0
-                        || crumbling_quads > 0
-                        || swirl_quads > 0
-                        || shadow_quads > 0
-                        || translucent_particle_quads > 0
-                        || translucent_item_quads > 0
-                        || oit_entity_quads > 0
-                        || additive_quads > 0
-                        || weather_quads > 0
-                        || !frame.lightning.bolts.is_empty()
-                        || frame.border.as_ref().is_some_and(|_| !frame.title);
+                    let has_oit_features = oit::FeatureCounts {
+                        text_quads,
+                        crumbling_quads: translucent_crumbling_quads,
+                        swirl_quads,
+                        shadow_quads,
+                        particle_quads: translucent_particle_quads,
+                        item_quads: translucent_item_quads,
+                        entity_quads: oit_entity_quads,
+                        additive_quads,
+                        weather_quads,
+                        lightning_bolts: !frame.lightning.bolts.is_empty(),
+                        world_border: frame
+                            .border
+                            .as_ref()
+                            .is_some_and(|b| !frame.title && !b.sides.is_empty()),
+                    }
+                    .any();
                     let extras = oit::Extras {
                         water_mask: (water_mask_quads > 0).then_some(&mask as _),
                         clouds: (cloud_quads > 0).then_some(&clouds as _),
-                        features: if any_features {
-                            Some(&features as &dyn Fn(&mut wgpu::RenderPass<'_>, oit::Stage))
-                        } else {
-                            None
-                        },
+                        features: has_oit_features.then_some(&features as _),
                     };
                     // The draw closure below borrows all of `self`, so the timer is taken out.
                     let mut own_timing = self.own_timing.take();

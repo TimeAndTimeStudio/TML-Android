@@ -421,6 +421,20 @@ self-contained performance change that applied to this tree:
   dense-light-cache rewrite, which needs particle groups, the additive vertex buffer, occlusion
   culling and polytone stores this tree lacks (`particles.rs` diverges by ~1500 lines); porting it
   blind would regress more than it saves.
+- `e08d2e53a5` — coalesced OIT passes. `Oit::run` now draws a frame's translucent features
+  (text, crumbling, swirl, shadow, particles, items, entities, additive, weather, lightning, border)
+  inside the terrain pass when no water mask patched the terrain depth (`FeaturesPass::Coalesced`;
+  with a mask it keeps the separate features pass, `FeaturesPass::Separate`, and with no feature
+  draw at all both are skipped, `Skip`). That removes a full-screen store and load per OIT stage.
+  `gfx.rs` builds an `oit::FeatureCounts` to decide `Skip`, so a frame with nothing in that stage
+  no longer runs the pass; it counts `translucent_crumbling_quads` too (the old inline check
+  counted only `crumbling_quads`) and requires a visible border side. The Haar wavelet
+  accumulators in `oit.wgsl` are unrolled over the three constant levels (no `exp2`, no
+  dynamically indexed local array), with the coefficient lane read by `oit_lane`; a Rust
+  reference port of the old loop is compared bit-for-bit in the tests. Adapted to this tree: the
+  upstream `pixel_count`/`pack_timing::counted` per-stage timing wrapper is absent here, so the
+  coalescing is done without it, and the shader-parsing test that used `gfx::terrain_shader()` is
+  dropped (the three shader-validation tests still cover the WGSL).
 - `fba8c0452c` — `HudBatch::clip_since` cuts quads where they are (kept quads move down with
   `copy_within`, a cut one writes over its own slots, only a growing cut moves the unread rest)
   through a `clip_quad` helper, instead of cloning every quad out and putting each part back.
@@ -477,7 +491,6 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `1181594273` | vehicles | slot test before `passenger_object_present` | this tree has no `persist.passenger_slots` (older passenger graph) |
 | `918ae6d651` | commands | selectors read the player list alone | this tree's `Selector` has no `include_entities` field (later selector refactor) |
 | `1dc5634a22` | hub | route `par_chunks_mut` to the persistent pool | this tree has no `parallel.rs` / `horizon_threads::par_chunks_mut`; the tick helpers are a later addition |
-| `e08d2e53a5` | OIT passes | coalesce OIT terrain/feature passes | needs `pixel_count`/`FeatureCounts`/`counted`, absent here |
 | `a8e58dcedf` | -15.1% decorate | stand-in chunk pooling, ore/placement scratch | needs the `ImposterProtoChunk`/`is_full_chunk` stand-in refactor and `TargetMemo`/`SphereSquares`, absent here |
 
 Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`, `5db9bc3f45`,
@@ -488,7 +501,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
 `e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`, `15824fc6f3` (with prerequisite
 `24dcd97129`), `8af680316d` (partial), `616c4fec2c`, `fba8c0452c`, `533bb2cdd3`, `ad406095d4`
-(partial).
+(partial), `e08d2e53a5`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -508,7 +521,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `96d758bf25` | api/semantics | 1 | 0 | perf(chunks): build mesh jobs before taking the job queue's lock (#19870) |
 | `f71ddcce2d` | api/semantics | 1 | 0 | perf(font): LZ4-compressed chunked off-atlas bitmap font strips (#20186) |
 | `3fa98d1bd8` | api/semantics | 1 | 0 | perf(font): compact Unihex HexTable and shared archive cache (~7.4 MB less RAM per table) (#20185) |
-| `e08d2e53a5` | api/semantics | 3 | 0 | perf(oit): coalesce OIT terrain/feature render passes, skip empty features, and unroll 3-level Haar wavelets (#20202) |
 | `8e0b8ff5a5` | api/semantics | 2 | 0 | perf(render): +1.1% to +4.3% FPS (+9.5% 1% lows) by caching lightmap and skipping unchanged per-frame GPU uploads (#19513) |
 | `0f0dea6114` | api/semantics | 1 | 0 | perf(render): +1.4% to +2.0% FPS and -56 MB mountain RSS via section-level mesh budgeting and calm-frame guards (#19527) |
 | `0c2cff4f46` | api/semantics | 3 | 0 | perf(render): +2.1% to +5.4% FPS (+10.2% 1% lows) via SoA Resident walk + O(N) PageRuns + L1 Occlusion bitset (#19514) |
