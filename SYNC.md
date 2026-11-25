@@ -450,11 +450,11 @@ self-contained performance change that applied to this tree:
   order (`BufferSlots`, inline when there are at most eight), and `sample_needed` evaluates only
   the masked Ys. The arena path has bit-exact tests against a recursive reference (depth 4,
   NaN/unsorted/duplicate/wide points, coordinate overflow above the inline limit). Adapted to
-  this tree: upstream's `pointwise_inputs`/`is_pointwise` lattice-reuse helpers and the
-  `needed_where` mask builder are absent here, so only the `sample_needed`/`sample_with`/
-  `usable_mask` pieces the spline needs were added to `density/mod.rs` (default
-  `pointwise_inputs` returns `None`, the spline reports its coordinates), and the test that
-  asserts the spline is pointwise keeps working through that split.
+  this tree: upstream's `pointwise_inputs`/`is_pointwise` lattice-reuse helpers are absent here,
+  so only the `sample_needed`/`sample_with`/`usable_mask` pieces the spline needs were added to
+  `density/mod.rs` (default `pointwise_inputs` returns `None`, the spline reports its
+  coordinates); `needed_where` followed with the `12cd1ed563` port, and the test that asserts the
+  spline is pointwise keeps working through that split.
 - `a8e58dcedf` (partial) — decoration plan and placement scratch reuse. `FeatureDecorationPlan`
   pre-resolves each biome/step list to step-local feature indices (`biome_steps`, an
   `FxHashMap`) instead of resolving on every chunk, and the 3x3 biome scan deduplicates ids in a
