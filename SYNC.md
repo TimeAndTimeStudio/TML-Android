@@ -354,7 +354,13 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `d939fd378d` | +2.5..3.3% RD | faster `ChunkMap` lookups | needs the toroidal-grid/hash refactor in `world.rs`/`chunk_map.rs`, absent here |
 | `8e0b8ff5a5` | +1.1..4.3% RD16 | caching lightmap and skipping unchanged per-frame GPU uploads | 488 lines through this tree's older `gfx.rs` (8 conflict regions); needs the lightmap/upload refactor |
 | `cb2132352e`, `0c2cff4f46` | +FPS / +SoA | `ColumnSlab`, SoA `Resident`/pages | large rewrites of `gfx/occlusion.rs`, `gfx/pages.rs`, `gfx/resident.rs` against this tree's older forms |
-| `0f0dea6114`, `96d758bf25` | +1.4..2.0% RD / mesh lock | streaming mesh-job pooling | needs `mesh_settings()`/`submit_mesh_candidates` and `hz_laps` instrumentation, absent here |
+| `0f0dea6114`, `96d758bf25` | +1.4..2.0% RD / mesh lock | streaming mesh-job pooling | `0f0dea6114` needs `mesh_settings()`/`submit_mesh_candidates` and `hz_laps`, absent here; `96d758bf25` fixes a queue lock held across job building, which this tree never does (`submit` takes the lock per job and builds each region before it) |
+| `5aeaafa6e5` | world | remap section palette slots at pack time | this tree's `PalettedContainer::to_nbt` predates the per-cell dedup the `aliases` table optimises (it copies the palette and words as-is), so the change would replace a cheaper save with a remap |
+| `a3ae5b0d11` | hub | meet a tracked-whole cell without its entities | needs the multi-level viewer (`Viewer::sources`, `player_shown`, `viewed_levels::entities`) and the `lan::Body` output this tree's tracker predates |
+| `42af125dc8` | render | GPU skinning for unarmored players / tagged translucent bodies | needs `paint` in the `posable` check and the `creatures/mod.rs` form; this tree's `posable` has no tint path there |
+| `1181594273` | vehicles | slot test before `passenger_object_present` | this tree has no `persist.passenger_slots` (older passenger graph) |
+| `918ae6d651` | commands | selectors read the player list alone | this tree's `Selector` has no `include_entities` field (later selector refactor) |
+| `1dc5634a22` | hub | route `par_chunks_mut` to the persistent pool | this tree has no `parallel.rs` / `horizon_threads::par_chunks_mut`; the tick helpers are a later addition |
 | `e08d2e53a5` | OIT passes | coalesce OIT terrain/feature passes | needs `pixel_count`/`FeatureCounts`/`counted`, absent here |
 | `fba8c0452c` | HUD | keep the HUD vertex buffer, clip quads in place | `clip_since` rewrite plus a heavily diverged `game.rs` |
 | `a8e58dcedf` | -15.1% decorate | stand-in chunk pooling, ore/placement scratch | needs the `ImposterProtoChunk`/`is_full_chunk` stand-in refactor and `TargetMemo`/`SphereSquares`, absent here |
