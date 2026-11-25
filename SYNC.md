@@ -396,6 +396,13 @@ self-contained performance change that applied to this tree:
   tree's per-column `body_with` (upstream's `bodies_with` batch is absent) and its bulk
   block-change path, which also warms, so it sets the flag and clears afterwards too. Upstream's
   hub test uses an absent `cache_census` and is dropped; the `chunks.rs` test is ported.
+- `fba8c0452c` — `HudBatch::clip_since` cuts quads where they are (kept quads move down with
+  `copy_within`, a cut one writes over its own slots, only a growing cut moves the unread rest)
+  through a `clip_quad` helper, instead of cloning every quad out and putting each part back.
+  Adapted to this tree: `clip_quad` interpolates the rectangle's UVs and text the way this tree's
+  `self.quad` path did (`clip_corner` is absent), and the `game.rs` half (a reused HUD vertex
+  buffer) is already covered here by `hud_reuse`/`HudBatch::new_with`. The upstream tests are
+  ported as a comparison against the old copy algorithm, minus the timing benchmark.
 - `24dcd97129` (prerequisite, not in the perf list) — `dimension_origin` is decoded as
   `Placement::DimensionOrigin` and given the generator's origin chunk (`StructureRegistry::origin`
   from `NoiseSpawnFinder`/`ChunkPos::ZERO`), so a set that uses it places its start instead of
@@ -443,7 +450,6 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `918ae6d651` | commands | selectors read the player list alone | this tree's `Selector` has no `include_entities` field (later selector refactor) |
 | `1dc5634a22` | hub | route `par_chunks_mut` to the persistent pool | this tree has no `parallel.rs` / `horizon_threads::par_chunks_mut`; the tick helpers are a later addition |
 | `e08d2e53a5` | OIT passes | coalesce OIT terrain/feature passes | needs `pixel_count`/`FeatureCounts`/`counted`, absent here |
-| `fba8c0452c` | HUD | keep the HUD vertex buffer, clip quads in place | `clip_since` rewrite plus a heavily diverged `game.rs` |
 | `a8e58dcedf` | -15.1% decorate | stand-in chunk pooling, ore/placement scratch | needs the `ImposterProtoChunk`/`is_full_chunk` stand-in refactor and `TargetMemo`/`SphereSquares`, absent here |
 
 Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`, `5db9bc3f45`,
@@ -453,7 +459,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
 `e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`, `15824fc6f3` (with prerequisite
-`24dcd97129`), `8af680316d` (partial), `616c4fec2c`.
+`24dcd97129`), `8af680316d` (partial), `616c4fec2c`, `fba8c0452c`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -473,7 +479,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `96d758bf25` | api/semantics | 1 | 0 | perf(chunks): build mesh jobs before taking the job queue's lock (#19870) |
 | `f71ddcce2d` | api/semantics | 1 | 0 | perf(font): LZ4-compressed chunked off-atlas bitmap font strips (#20186) |
 | `3fa98d1bd8` | api/semantics | 1 | 0 | perf(font): compact Unihex HexTable and shared archive cache (~7.4 MB less RAM per table) (#20185) |
-| `fba8c0452c` | api/semantics | 2 | 0 | perf(interface): keep the HUD vertex buffer and clip quads in place (#18010) |
 | `533bb2cdd3` | api/semantics | 4 | 0 | perf(noise): -4.6% worldgen proto wall time via bit-exact Perlin/Simplex/NoiseStack fast paths (#19536) |
 | `e08d2e53a5` | api/semantics | 3 | 0 | perf(oit): coalesce OIT terrain/feature render passes, skip empty features, and unroll 3-level Haar wavelets (#20202) |
 | `8e0b8ff5a5` | api/semantics | 2 | 0 | perf(render): +1.1% to +4.3% FPS (+9.5% 1% lows) by caching lightmap and skipping unchanged per-frame GPU uploads (#19513) |
