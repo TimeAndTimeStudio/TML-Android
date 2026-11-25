@@ -88,14 +88,6 @@ enum Values<'a> {
     Constant(f32),
     Buffer(&'a [f32]),
 }
-impl Values<'_> {
-    fn get(self, index: usize) -> f32 {
-        match self {
-            Self::Constant(value) => value,
-            Self::Buffer(buffer) => buffer[index],
-        }
-    }
-}
 #[derive(Clone, Debug)]
 pub struct LerpSampler {
     pub alpha: Arc<dyn DensitySampler>,
@@ -138,8 +130,29 @@ impl DensitySampler for LerpSampler {
         self.alpha.sample_volume(context, buffer, volume)?;
         self.first.with_volume(context, volume, |context, first| {
             self.second.with_volume(context, volume, |_, second| {
-                for (index, alpha) in buffer.iter_mut().enumerate() {
-                    *alpha = interpolate(*alpha, first.get(index), second.get(index));
+                // Hoist the enum dispatch out of the loop: one match per volume, not
+                // one per cell.
+                match (first, second) {
+                    (Values::Constant(a), Values::Constant(b)) => {
+                        for alpha in buffer.iter_mut() {
+                            *alpha = interpolate(*alpha, a, b);
+                        }
+                    }
+                    (Values::Constant(a), Values::Buffer(bs)) => {
+                        for (alpha, &b) in buffer.iter_mut().zip(bs) {
+                            *alpha = interpolate(*alpha, a, b);
+                        }
+                    }
+                    (Values::Buffer(as_), Values::Constant(b)) => {
+                        for (alpha, &a) in buffer.iter_mut().zip(as_) {
+                            *alpha = interpolate(*alpha, a, b);
+                        }
+                    }
+                    (Values::Buffer(as_), Values::Buffer(bs)) => {
+                        for ((alpha, &a), &b) in buffer.iter_mut().zip(as_).zip(bs) {
+                            *alpha = interpolate(*alpha, a, b);
+                        }
+                    }
                 }
                 Ok(())
             })
