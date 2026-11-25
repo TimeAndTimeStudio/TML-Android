@@ -269,6 +269,21 @@ self-contained performance change that applied to this tree:
 - `7f693e21b4` — `Behaviours` resolves its fixed hot-path block tags (fire, lava fire spread,
   hanging signs, speleothems, nether portal frame) once at load, on both the source and cached-table
   paths, so hot paths no longer look them up by name.
+- `746f280e8e` — `BlockCollisionScan` classifies a non-full block's moved shape with
+  `fast_box_overlap` (exact, zero-allocation) so shapes that cannot overlap the query box are
+  skipped without moving them, and reuses a per-thread moved-shape cache keyed by position and
+  `VoxelShape::same_identity`. `Replay::best` runs its last candidate on `self.body` directly
+  instead of cloning it. Adapted to this tree's `Collider`-based scan (upstream caches full cubes
+  via `moved_block`, expressed here as `Collider::Block`).
+- `150a1013d2` — a generator worker compiles the world's surface rule once, folding each chunk's
+  possible-biome decisions, instead of rebuilding it per proto chunk (`build_surface` and
+  `apply_carving_mask`); adds `MaterialConditions::add_shared_rule` / `apply_carving_mask_shared`.
+- `635586ce1b` — canyon width buffers stay on the stack for vanilla heights and spill to the heap
+  past 1024; the carving mask caches each carver's large-feature seed constants across the 17x17
+  origin neighbourhood; `apply_carving_mask_shared` defers the per-cell top-material worker until
+  exposed dirt needs repair, when the shared rule has no eager density bindings. Adapted
+  `has_eager_density_bindings` to this tree's `CompiledRule::binds_densities` (no eager/point
+  distinction here); the upstream test modules that need absent sampler APIs are left out.
 
 Already present in this tree (verified by their code being in `HEAD`): `ab44288662` (cloud
 `CloudMask` rebuild) and most of `e349aeccea` (packed light BFS; only upstream's later
@@ -309,13 +324,12 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `0f0dea6114`, `96d758bf25` | +1.4..2.0% RD / mesh lock | streaming mesh-job pooling | needs `mesh_settings()`/`submit_mesh_candidates` and `hz_laps` instrumentation, absent here |
 | `e08d2e53a5` | OIT passes | coalesce OIT terrain/feature passes | needs `pixel_count`/`FeatureCounts`/`counted`, absent here |
 | `fba8c0452c` | HUD | keep the HUD vertex buffer, clip quads in place | `clip_since` rewrite plus a heavily diverged `game.rs` |
-| `635586ce1b` | worldgen carve | lazy carving top-material worker | needs `apply_carving_mask_shared`/`has_eager_density_bindings`, absent here |
 | `a8e58dcedf` | -15.1% decorate | stand-in chunk pooling, ore/placement scratch | needs the `ImposterProtoChunk`/`is_full_chunk` stand-in refactor and `TargetMemo`/`SphereSquares`, absent here |
-| `746f280e8e` | world/lan | fast non-full block overlap check | needs `VoxelShape::same_identity` and the shape-based scan, absent here |
 
 Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`, `5db9bc3f45`,
 `d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
-`b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`.
+`b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
+`150a1013d2`, `635586ce1b`.
 
 The remaining upstream perf commits from the Nov 20-24 window are ~130; the ones not in this
 table all modify files this tree never had (the Nov 23-24 gameplay/render reorganisation), so
