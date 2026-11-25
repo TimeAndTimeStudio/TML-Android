@@ -326,6 +326,11 @@ self-contained performance change that applied to this tree:
   path; `can_use` becomes `option_usable`, which also rejects unknown keys so the separate
   `OPTIONS.contains` check goes. This fork has no mod system, so the `selector_tokens` lookup the
   commit also guards is not present to adapt.
+- `92d8bf33e1` — a geometry stage whose every `EmitVertex` sits in its own `for (int i = 0; i < 3;
+  i++)` strip loop draws one triangle per loop, so `combine()` bounds the instance count with
+  `emission_loops()` instead of `max_vertices - 2`. This tree has no `array_constructors` module,
+  so `matching()` is added locally in `geometry.rs` (upstream only made its `array_constructors`
+  copy `pub(super)`). The two strip tests are ported.
 - `e0bbdc1e25` — an open dialog keeps a `LayoutCache` keyed on the screen size, the font's
   glyph epoch and the text direction, so `dialog_layout` returns a shared `Layout` instead of
   re-wrapping its body every frame; `Part::Line` holds an `Arc<Text>` so copying the layout or
@@ -413,7 +418,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
-`e0bbdc1e25`.
+`e0bbdc1e25`, `92d8bf33e1`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -538,7 +543,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `5115507c83` | partially absent | 12 | 6 | perf(server): give the server thread a physical core of its own on machines with SMT (#17840) |
 | `7fe978ddbe` | partially absent | 5 | 4 | perf(server): run a guest's sculk step and tick tail in its body's turn when it told no one anything (#18031) |
 | `55cc2b9740` | partially absent | 6 | 5 | perf(server): share identical block and light broadcast payloads (#20238) |
-| `92d8bf33e1` | partially absent | 2 | 1 | perf(shaders): a geometry stage of separate strips of three draws one instance per strip (#19699) |
 | `8197ba2363` | partially absent | 8 | 4 | perf(shaders): a loop naga proves finite gets no forced bound (#19862) |
 | `2798431890` | partially absent | 8 | 3 | perf(shaders): a pack's shadow pass sorts its sections once and draws the solid ones with indirect multi-draws (#19806) |
 | `6fd61f2dcc` | partially absent | 19 | 15 | perf(shaders): compile native shader packs asynchronously and batch option edits (#20601) |
