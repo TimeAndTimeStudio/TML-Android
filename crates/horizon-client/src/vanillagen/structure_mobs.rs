@@ -22,9 +22,9 @@ use horizon_world::{
 };
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
-        Arc, OnceLock,
+        Arc, Mutex, OnceLock, PoisonError, Weak,
         atomic::{AtomicI64, AtomicU8, Ordering},
     },
 };
@@ -56,20 +56,41 @@ fn load(root: &std::path::Path) -> Option<Data> {
     })
 }
 
+/// What a finalizer reads [`Data`] into.
+type DataCell = Arc<OnceLock<Option<Data>>>;
+
+/// The cell for a finalizer of `root`: the one a live finalizer of the same root holds, else a
+/// new one. `load` takes no dimension, so a world's overworld and Nether read the same files: one
+/// read serves both instead of a copy each. The cell goes with the world's last finalizer.
+fn shared_cell(root: &Path) -> DataCell {
+    static CELLS: Mutex<Vec<(PathBuf, Weak<OnceLock<Option<Data>>>)>> = Mutex::new(Vec::new());
+    let mut cells = CELLS.lock().unwrap_or_else(PoisonError::into_inner);
+    cells.retain(|(_, cell)| cell.strong_count() > 0);
+    let live = cells
+        .iter()
+        .find_map(|(path, cell)| (path == root).then(|| cell.upgrade()).flatten());
+    live.unwrap_or_else(|| {
+        let cell = Arc::new(OnceLock::new());
+        cells.push((root.to_owned(), Arc::downgrade(&cell)));
+        cell
+    })
+}
+
 pub struct StructureMobFinalizer {
     root: PathBuf,
     dimension: String,
-    data: OnceLock<Option<Data>>,
+    data: DataCell,
     /// The level's difficulty (0 peaceful to 3 hard) and overworld clock.
     difficulty: AtomicU8,
     day_time: AtomicI64,
 }
 impl StructureMobFinalizer {
     pub fn new(root: PathBuf, dimension: &str) -> Self {
+        let data = shared_cell(&root);
         Self {
             root,
             dimension: dimension.to_owned(),
-            data: OnceLock::new(),
+            data,
             difficulty: AtomicU8::new(2),
             day_time: AtomicI64::new(0),
         }
@@ -309,6 +330,24 @@ impl StructureMobFinalizer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A world's dimensions share one read; a finalizer of another root reads its own, and the
+    /// cell goes with the world's last finalizer. `data` is never sampled, so no files are needed.
+    #[test]
+    fn a_worlds_dimensions_share_one_read() {
+        let root = PathBuf::from("/nonexistent-horizon-structure-mob-root");
+        let overworld = StructureMobFinalizer::new(root.clone(), "minecraft:overworld");
+        let nether = StructureMobFinalizer::new(root.clone(), "minecraft:the_nether");
+        assert!(Arc::ptr_eq(&overworld.data, &nether.data));
+        let other = StructureMobFinalizer::new(
+            PathBuf::from("/nonexistent-horizon-structure-mob-root-2"),
+            "minecraft:overworld",
+        );
+        assert!(!Arc::ptr_eq(&overworld.data, &other.data));
+        let read = Arc::downgrade(&overworld.data);
+        drop((overworld, nether));
+        assert!(read.upgrade().is_none(), "the cell goes with the last finalizer");
+    }
 
     /// The bastion's crossbow piglin keeps its crossbow (STRUCTURE skips
     /// createSpawnWeapon) and saves what Piglin.addAdditionalSaveData writes.
