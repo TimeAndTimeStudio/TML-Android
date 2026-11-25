@@ -377,6 +377,17 @@ self-contained performance change that applied to this tree:
   `#[repr(align(64))]` cell, so no two share a cache line. Adapted to this tree's `Entry`, which has
   no `last_job`/`quiet` fields: only `running` is padded. The `padded_counters_bench` example is
   included.
+- `15824fc6f3` — a structure reference check tests grid candidates by their grid position without
+  building the candidate list, and the busy-window check collects references in two passes
+  (`deferred`) so a busy neighbour no longer forces the slow path. This needed the prerequisite
+  fix `24dcd97129` (`dimension_origin` placement, ported just below) because the range check adds a
+  `Placement::DimensionOrigin` arm. The upstream `references_preserves_grid_order_across_busy_and_
+  deferred_chunks` test targets a newer `StartContext` (`base_columns_by`/`noise_column_into`) and
+  a `worldgen::structure_terrain` module this tree lacks, so it is dropped; the perf change is kept.
+- `24dcd97129` (prerequisite, not in the perf list) — `dimension_origin` is decoded as
+  `Placement::DimensionOrigin` and given the generator's origin chunk (`StructureRegistry::origin`
+  from `NoiseSpawnFinder`/`ChunkPos::ZERO`), so a set that uses it places its start instead of
+  falling through to `Unsupported`. Ported because `15824fc6f3` builds on it.
 
 Already present in this tree (verified by their code being in `HEAD`): `ab44288662` (cloud
 `CloudMask` rebuild), `f43817376a` (the whole bucketed `Uploads` staging ring with
@@ -406,7 +417,6 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `d8f558197d` | +8.7..11.6% RD32 | conservative reversed-Z Hi-Z pyramid occlusion culling | adds `gfx/gpu_culling.rs` and `gfx/gpu_occlusion.wgsl`, absent here |
 | `12cd1ed563` | density | `IntervalSelectSampler` duplicate threshold scans | LerpSampler half ported; the IntervalSelect half needs the `needed`-mask sampler refactor, absent here |
 | `51670062e1` | 1.61x scalar | flat `SplineSampler` arena | needs `sample_with`/`usable_mask`, absent here |
-| `15824fc6f3` | worldgen | structure grid range check | needs `Placement::DimensionOrigin`/`StructureRegistry::origin`, absent here |
 | `ebb6ee7a8a` | server | share encoded chunk bodies | needs `Body::Shared`/`Encoder::bodies_with`, absent here |
 | `3fa98d1bd8`, `f71ddcce2d`, `533bb2cdd3`, `ad406095d4`, `dedb0375a4` | font/noise/particles/sprites | large multi-region rewrites | diverge from this tree's older forms, deferred |
 | `e0c1233a27` | -22..-33 MB | zero-alloc `EntityBatch` LUT + Schwartzian sort | needs the 16-material/native-terrain overlay refactor; this tree's `entity_batch.rs` is the older 10-material, 400-line form |
@@ -430,7 +440,8 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
-`e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`.
+`e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`, `15824fc6f3` (with prerequisite
+`24dcd97129`).
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -467,7 +478,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `a8e58dcedf` | api/semantics | 6 | 0 | perf(worldgen): -15.1% decorate wall time via stand-in chunk pooling, ore/placement scratch reuse, and warm-biome shortcut (#20191) |
 | `211e07fc54` | api/semantics | 7 | 0 | perf(worldgen): bounded per-worker CompiledSurfaceRule variant cache and fast column writes (#20190) |
 | `51670062e1` | api/semantics | 1 | 0 | perf(worldgen): flat contiguous compiled SplineSampler arena (1.61x faster scalar, -12.8% zero-alloc volume) (#20476) |
-| `15824fc6f3` | api/semantics | 2 | 0 | perf(worldgen): grid-candidate structure range check and two-pass busy-chunk references (#20188) |
 | `f618858113` | files absent | 4 | 4 | bug(mods): a game with native mods keeps Play with Friends and Horizon's other official parts (#19408) |
 | `937363f340` | files absent | 3 | 3 | fix(tooling): reading a .hzperf capture stops at a limit on what it inflates (#20350) |
 | `bf1294c568` | files absent | 7 | 7 | perf(carts): a cart takes the boxes of the carts near it once when its tick begins (#18043) |
