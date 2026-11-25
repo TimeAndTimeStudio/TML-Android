@@ -314,6 +314,13 @@ self-contained performance change that applied to this tree:
   call, shared by `RegionFile::write_header` and `RegionWriter::finish`, and a chunk's length and
   compression byte are written in one `write_all`. The `region_write_bench` example is included
   (its `nbt` import moved to `horizon_world::nbt`).
+- `ec0648aba7` — `tick_sniffer_effects` returns before listing players when no live sniffer
+  exists in the level. The effect bodies already skip non-sniffers, so the guard only avoids the
+  player list and the loop. Adapted to this tree's `game/sniffers.rs` (upstream's later
+  `game/mobs/sniffers.rs` path).
+- `debef4584c` — `tick_remote_entities` builds the orb `followed` list only when the client has
+  experience orbs, and the cat `sleepers` list only when a cat is in the level. Adapted to this
+  tree's `game/remote.rs` (upstream's `game/network/remote/tick_entities.rs`).
 - `fdf87ca16d` — the pool's scheduler counters (`epoch`, `sleepers`, `far`, `released`, `threads`,
   each source's `running`, and `quiet` where this tree has it) are wrapped in `Padded`, a
   `#[repr(align(64))]` cell, so no two share a cache line. Adapted to this tree's `Entry`, which has
@@ -369,7 +376,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
-`c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`.
+`c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -419,14 +426,12 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `df587802f0` | files absent | 1 | 1 | perf(json-nbt): avoid per-number string and per-object Vec allocations in json_nbt (#20643) |
 | `210fdc3e6c` | files absent | 3 | 3 | perf(lan): add O(1) GuestList UUID index, lock-free layout/written check, and registration_ref (#19082) |
 | `4b4a6b40e1` | files absent | 2 | 2 | perf(mobs): serialise a mob's turn only for the hooks that run in it (#18260) |
-| `ec0648aba7` | files absent | 3 | 3 | perf(mobs): skip tick_sniffer_effects when no live sniffer exists (#19324) |
 | `a87cdbd698` | files absent | 15 | 15 | perf(mod-api): keep per-file generator results across build script runs (#18249) |
 | `4529f78913` | files absent | 1 | 1 | perf(mod-runtime): skip byte_channel condvar wakeups when no waiters exist (#19084) |
 | `40879f5f25` | files absent | 5 | 5 | perf(modding): track mob/player render hook listeners per phase via MobRenderHooks (#19580) |
 | `3ff2a22128` | files absent | 1 | 1 | perf(mods): fluid declarations load through the shared package reader (#20067) |
 | `4291720f70` | files absent | 2 | 2 | perf(motion): add cells_without_collision fast path for no_player_collision (#19550) |
 | `ff7679e3eb` | files absent | 3 | 3 | perf(portals): each level keeps its own portal palette cache (#18365) |
-| `debef4584c` | files absent | 1 | 1 | perf(remote): skip followed/sleepers scans in tick_remote_entities when no orbs or cats exist (#19579) |
 | `ac8c53a1e7` | files absent | 3 | 3 | perf(render): +1.6% to +4.8% FPS (+15.5% 1% lows) via 4-band coalesced GPU culling (#19509) |
 | `73c70814c7` | files absent | 1 | 1 | perf(rendering): equal LabPBR map pages share one page of the paged map's pool (#18918) |
 | `9436a2972a` | files absent | 3 | 3 | perf(rendering): the frame check reads nothing from disk with no shader pack picked (#19216) (#19254) |
