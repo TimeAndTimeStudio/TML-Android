@@ -321,6 +321,16 @@ self-contained performance change that applied to this tree:
 - `debef4584c` — `tick_remote_entities` builds the orb `followed` list only when the client has
   experience orbs, and the cat `sleepers` list only when a cat is in the level. Adapted to this
   tree's `game/remote.rs` (upstream's `game/network/remote/tick_entities.rs`).
+- `07147ef4af` — `publish_boss_bars` returns before building viewers when no boss-bar source
+  exists and nothing has been sent, `boss_viewers` reserves for the host plus its guests,
+  `diff_boss_events` returns early for a viewer with no desired bars and no sent map, and an
+  emptied sent map is removed so the skip can resume. This tree has no
+  `dimension_type().has_ender_dragon_fight`, so `dragon_bar_possible` (dragon.rs) mirrors
+  `dragon_boss_progress`'s End/loaded/not-won test and `has_raids` (raids.rs) exposes
+  `raiding.raids.map.is_empty()`; the private fields live in sibling modules.
+- `1bde596b8d` — `sculk_step_on` and `sculk_step_on_player` return while the sculk index is
+  empty, and `sculk_stand_on` takes a slice so the player path borrows a one-element array
+  instead of a Vec. Adapted to this tree's `game/sculk.rs` (upstream's `game/blocks/sculk.rs`).
 - `fdf87ca16d` — the pool's scheduler counters (`epoch`, `sleepers`, `far`, `released`, `threads`,
   each source's `running`, and `quiet` where this tree has it) are wrapped in `Padded`, a
   `#[repr(align(64))]` cell, so no two share a cache line. Adapted to this tree's `Entry`, which has
@@ -376,7 +386,8 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
-`c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`.
+`c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
+`07147ef4af`, `1bde596b8d`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -417,7 +428,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `15824fc6f3` | api/semantics | 2 | 0 | perf(worldgen): grid-candidate structure range check and two-pass busy-chunk references (#20188) |
 | `f618858113` | files absent | 4 | 4 | bug(mods): a game with native mods keeps Play with Friends and Horizon's other official parts (#19408) |
 | `937363f340` | files absent | 3 | 3 | fix(tooling): reading a .hzperf capture stops at a limit on what it inflates (#20350) |
-| `07147ef4af` | files absent | 2 | 2 | perf(bossbars): skip publish_boss_bars without sources and prune empty viewer maps (#19326) |
 | `bf1294c568` | files absent | 7 | 7 | perf(carts): a cart takes the boxes of the carts near it once when its tick begins (#18043) |
 | `f82d68ab08` | files absent | 2 | 2 | perf(client): -48 MB peak RSS and per-item Remote backlog deadline preventing chunk-burst starvation (#19529) |
 | `918ae6d651` | files absent | 1 | 1 | perf(commands): player selectors read the player list, not every entity of every level (#19242) |
@@ -436,7 +446,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `73c70814c7` | files absent | 1 | 1 | perf(rendering): equal LabPBR map pages share one page of the paged map's pool (#18918) |
 | `9436a2972a` | files absent | 3 | 3 | perf(rendering): the frame check reads nothing from disk with no shader pack picked (#19216) (#19254) |
 | `f8143deba2` | files absent | 3 | 3 | perf(scoreboard): find the teams of entities by the holders on teams, not by formatting every entity's name (#18017) |
-| `1bde596b8d` | files absent | 2 | 2 | perf(sculk): skip step_on on empty index and avoid player Vec allocation (#19325) |
 | `a95ec735d0` | files absent | 3 | 3 | perf(server): a guest's view for the mobs swaps the dozen fields it reads, not a hundred (#18033) |
 | `b3238d7e7a` | files absent | 4 | 4 | perf(server): an idle level closes without waiting for the disk in the tick (#18474) |
 | `3211b1c783` | files absent | 4 | 4 | perf(server): refresh the guest turns' player boxes by write, not for every guest (#17384) |
