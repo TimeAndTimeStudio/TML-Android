@@ -125,7 +125,11 @@ fn download(
             let mut hash = Sha256::new();
             hash.update(&data);
             let got: String = hash.finalize().iter().map(|b| format!("{b:02x}")).collect();
-            if release.sha256.as_ref().map_or(data.len() as u64 == release.size, |want| want == &got) {
+            if release
+                .sha256
+                .as_ref()
+                .map_or(data.len() as u64 == release.size, |want| want == &got)
+            {
                 log::info!("TML update: existing APK matches hash, skipping re-download");
                 shared.lock().unwrap_or_else(PoisonError::into_inner).done = data.len() as u64;
                 shared.lock().unwrap_or_else(PoisonError::into_inner).total = data.len() as u64;
@@ -196,7 +200,7 @@ impl Game<'_> {
                         offer.stage = Some(Stage::Ask);
                     }
                     Ok(None) => {
-                        let cur = crate::android::app_version().map_or("1.0.67".into(), |(v, _)| v);
+                        let cur = crate::android::app_version().map_or("1.0.68".into(), |(v, _)| v);
                         let _ = std::fs::remove_dir_all(updates());
                         offer.stage = Some(Stage::UpToDate(cur));
                     }
@@ -226,7 +230,7 @@ impl Game<'_> {
         let current = match (crate::android::app_version(), test) {
             (_, Some(pretend)) => pretend,
             (Some((version, _)), None) => version,
-            _ => "1.0.67".into(),
+            _ => "1.0.68".into(),
         };
         offer.stage = Some(Stage::Checking);
         offer.cancel.store(false, Ordering::Relaxed);
@@ -518,9 +522,8 @@ impl Game<'_> {
         let Some(stage) = self.update_offer_shown() else {
             return false;
         };
-        let inside = |r: [f32; 4]| {
-            p.0 >= r[0] && p.0 <= r[0] + r[2] && p.1 >= r[1] && p.1 <= r[1] + r[3]
-        };
+        let inside =
+            |r: [f32; 4]| p.0 >= r[0] && p.0 <= r[0] + r[2] && p.1 >= r[1] && p.1 <= r[1] + r[3];
         if let Some(button) = self
             .update_offer
             .buttons

@@ -876,13 +876,16 @@ impl Particle {
         }
     }
     /// `getLightCoords(a)` from the world's smooth sky and block light (0..=240).
+    #[inline(always)]
     fn light_coords(&self, partial: f32, sky: u32, block: u32) -> (u32, u32) {
-        let t = ((self.age as f32 + partial) / self.lifetime as f32).clamp(0.0, 1.0);
         match self.light {
             Light::World => (sky, block),
             Light::FullBright => (240, 240),
             Light::Block15 => (sky, 240),
-            Light::AgeEmission => (sky, (block + (t * 240.0) as u32).min(240)),
+            Light::AgeEmission => {
+                let t = ((self.age as f32 + partial) / self.lifetime as f32).clamp(0.0, 1.0);
+                (sky, (block + (t * 240.0) as u32).min(240))
+            }
             Light::AgeEmission4 => {
                 let b = self.age as f32 / self.lifetime as f32;
                 let b = (b * b) * (b * b);
@@ -895,21 +898,34 @@ impl Particle {
             ),
         }
     }
+    #[inline(always)]
     fn quad_size(&self, a: f32) -> f32 {
-        let t = (self.age as f32 + a) / self.lifetime as f32;
         match self.size_curve {
             Size::Fixed => self.size,
-            Size::GrowIn => self.size * (t * 32.0).clamp(0.0, 1.0),
-            Size::Flame => self.size * (1.0 - t * t * 0.5),
-            Size::Lava => self.size * (1.0 - t * t),
+            Size::GrowIn => {
+                let t = (self.age as f32 + a) / self.lifetime as f32;
+                self.size * (t * 32.0).clamp(0.0, 1.0)
+            }
+            Size::Flame => {
+                let t = (self.age as f32 + a) / self.lifetime as f32;
+                self.size * (1.0 - t * t * 0.5)
+            }
+            Size::Lava => {
+                let t = (self.age as f32 + a) / self.lifetime as f32;
+                self.size * (1.0 - t * t)
+            }
             Size::Portal => {
+                let t = (self.age as f32 + a) / self.lifetime as f32;
                 let s = 1.0 - t;
                 self.size * (1.0 - s * s)
             }
             Size::ReversePortal => {
                 self.size * (1.0 - (self.age as f32 + a) / (self.lifetime as f32 * 1.5))
             }
-            Size::Shriek => self.size * (t * 0.75).clamp(0.0, 1.0),
+            Size::Shriek => {
+                let t = (self.age as f32 + a) / self.lifetime as f32;
+                self.size * (t * 0.75).clamp(0.0, 1.0)
+            }
             Size::Flash => {
                 7.1 * trig::sin(f64::from(
                     (self.age as f32 + a - 1.0) * 0.25 * std::f64::consts::PI as f32,
@@ -1008,6 +1024,7 @@ impl ParticleLevel<'_> {
             Err(_) => d,
         }
     }
+    #[inline(always)]
     pub(crate) fn block_at(p: [f64; 3]) -> [i32; 3] {
         [
             p[0].floor() as i32,
@@ -1015,9 +1032,27 @@ impl ParticleLevel<'_> {
             p[2].floor() as i32,
         ]
     }
+    /// The fluid at a block without reading the block above for its height.
+    #[inline]
+    fn fluid_kind(&self, b: [i32; 3]) -> Fluid {
+        let state = self.world.block(b[0], b[1], b[2]);
+        if state == self.world.air {
+            return Fluid::None;
+        }
+        self.facts.get(state).fluid
+    }
     /// The fluid at a block and `FluidState.getHeight`.
+    #[inline]
     fn fluid(&self, b: [i32; 3]) -> (Fluid, f64) {
-        let s = self.facts.get(self.world.block(b[0], b[1], b[2]));
+        let state = self.world.block(b[0], b[1], b[2]);
+        if state == self.world.air {
+            return (Fluid::None, 0.0);
+        }
+        self.fluid_of(state, b)
+    }
+    #[inline]
+    fn fluid_of(&self, state: horizon_world::registry::BlockStateId, b: [i32; 3]) -> (Fluid, f64) {
+        let s = self.facts.get(state);
         if s.fluid == Fluid::None {
             return (Fluid::None, 0.0);
         }
@@ -1030,13 +1065,29 @@ impl ParticleLevel<'_> {
         (s.fluid, height)
     }
     /// The fluid at a block and whether it is a source (`FluidState.isSource`).
+    #[inline]
     pub(crate) fn fluid_source(&self, b: [i32; 3]) -> (Fluid, bool) {
-        let s = self.facts.get(self.world.block(b[0], b[1], b[2]));
+        let state = self.world.block(b[0], b[1], b[2]);
+        if state == self.world.air {
+            return (Fluid::None, false);
+        }
+        let s = self.facts.get(state);
         (s.fluid, s.fluid_level == 8 && !s.fluid_falling)
     }
     /// `getCollisionShape(...).max(Y, x, z)` for cached shapes.
+    #[allow(dead_code)]
+    #[inline]
     fn collision_top(&self, b: [i32; 3], fx: f64, fz: f64) -> f64 {
-        let state = self.world.block(b[0], b[1], b[2]);
+        self.collision_top_of(self.world.block(b[0], b[1], b[2]), fx, fz)
+    }
+    /// `getCollisionShape(...).max(Y, x, z)` for cached shapes of `state`.
+    #[inline]
+    fn collision_top_of(
+        &self,
+        state: horizon_world::registry::BlockStateId,
+        fx: f64,
+        fz: f64,
+    ) -> f64 {
         match self.collision.cached_shapes().cached_shape(state) {
             Ok(Some(shape)) if !shape.is_empty() => shape.max_at(Axis::Y, fx, fz),
             Ok(Some(_)) => 0.0,
@@ -1666,9 +1717,16 @@ impl ParticleEngine {
         }
     }
     /// `SpriteSet.get(random)`.
+    #[allow(dead_code)]
+    #[inline]
     fn sprite_from_set(&mut self, ty: ParticleType) -> Sprite {
-        match self.sets.get(&ty) {
-            Some(&set) => {
+        self.sprite_from_set_index(self.set_of(ty))
+    }
+    /// `SpriteSet.get(random)` from an already-resolved sprite set index.
+    #[inline]
+    fn sprite_from_set_index(&mut self, set: Option<u32>) -> Sprite {
+        match set {
+            Some(set) => {
                 let sprites = &self.set_sprites[set as usize];
                 Sprite::Index(
                     sprites[self
@@ -1680,9 +1738,11 @@ impl ParticleEngine {
             None => Sprite::Index(u32::MAX),
         }
     }
+    #[inline]
     fn set_of(&self, ty: ParticleType) -> Option<u32> {
         self.sets.get(&ty).copied()
     }
+    #[allow(dead_code)]
     fn first(&self, ty: ParticleType) -> Sprite {
         self.set_of(ty).map_or(Sprite::Index(u32::MAX), |s| {
             Sprite::Index(self.set_sprites[s as usize][0])
@@ -2020,7 +2080,7 @@ impl ParticleEngine {
             | T::DrippingDripstoneLava
             | T::FallingDripstoneLava => {
                 // The provider picks the sprite first (`sprite.get(random)`).
-                let sprite = self.sprite_from_set(ty);
+                let sprite = self.sprite_from_set_index(set);
                 let mut q = Particle::at(r, ty, p);
                 q.sprite = sprite;
                 q.set_size(0.01, 0.01);
@@ -2290,7 +2350,7 @@ impl ParticleEngine {
                     ],
                     _ => [0.0, f64::from(-0.8f32), 0.0],
                 };
-                let sprite = self.sprite_from_set(ty);
+                let sprite = self.sprite_from_set_index(set);
                 let mut q = if ty == T::Underwater {
                     let mut q = Particle::at(r, ty, below);
                     q.set_size(0.01, 0.01);
@@ -2415,7 +2475,7 @@ impl ParticleEngine {
             }
             T::HappyVillager | T::Composter | T::Mycelium | T::Dolphin | T::EggCrack => {
                 // SuspendedTownParticle; the provider picks the sprite first.
-                let sprite = self.sprite_from_set(ty);
+                let sprite = self.sprite_from_set_index(set);
                 let mut q = Particle::moving(r, ty, p, v);
                 q.sprite = sprite;
                 let br = r.next_float() * 0.1 + 0.2;
@@ -2932,12 +2992,14 @@ impl ParticleEngine {
             // BreakingItemParticle: a crumb of the item's sprite.
             T::Item | T::ItemSlime | T::ItemSnowball | T::ItemCobweb | T::SulfurCubeGoo => {
                 let sprite = if ty == T::SulfurCubeGoo {
-                    self.first(ty)
+                    set.map_or(Sprite::Index(u32::MAX), |s| {
+                        Sprite::Index(self.set_sprites[s as usize][0])
+                    })
                 } else {
                     // ItemStackRenderState.pickParticleMaterial.
-                    let layers = match ty {
-                        T::Item => o.item.clone().unwrap_or_default(),
-                        _ => self.item_sprites.get(&ty).cloned().unwrap_or_default(),
+                    let layers: &[String] = match ty {
+                        T::Item => o.item.as_deref().unwrap_or(&[]),
+                        _ => self.item_sprites.get(&ty).map_or(&[], Vec::as_slice),
                     };
                     if layers.is_empty() {
                         Sprite::Index(u32::MAX)
@@ -2975,7 +3037,7 @@ impl ParticleEngine {
                 let xa = 0.5 - pr.next_double();
                 let ya = if pr.next_boolean() { v[1] } else { -v[1] };
                 let za = 0.5 - pr.next_double();
-                let sprite = self.sprite_from_set(ty);
+                let sprite = self.sprite_from_set_index(set);
                 let mut q = Particle::moving(r, ty, p, [xa, ya, za]);
                 q.sprite = sprite;
                 q.speed_up_when_y_blocked = true;
@@ -3018,7 +3080,7 @@ impl ParticleEngine {
             }
             // FlyStraightTowardsParticle.OminousSpawnProvider.
             T::OminousSpawning => {
-                let sprite = self.sprite_from_set(ty);
+                let sprite = self.sprite_from_set_index(set);
                 let mut q = Particle::at(r, ty, p);
                 q.sprite = sprite;
                 q.velocity = v;
@@ -3098,10 +3160,9 @@ impl ParticleEngine {
             }
         };
         if particle.set.is_some() {
-            particle.sprite = self.first(ty);
             self.sprite_from_age(&mut particle);
         } else if matches!(particle.sprite, Sprite::Index(u32::MAX)) {
-            particle.sprite = self.sprite_from_set(ty);
+            particle.sprite = self.sprite_from_set_index(set);
         }
         particle.random = local;
         Some(particle)
@@ -3172,7 +3233,11 @@ impl ParticleEngine {
         });
     }
     fn tick_starters(&mut self) {
-        for mut s in std::mem::take(&mut self.starters) {
+        if self.starters.is_empty() {
+            return;
+        }
+        let mut starters = std::mem::take(&mut self.starters);
+        starters.retain_mut(|s| {
             if s.life == 0 {
                 let large = s.explosions.len() >= 3
                     || s.explosions
@@ -3188,20 +3253,18 @@ impl ParticleEngine {
                 self.sounds.push((sound, s.at, 20.0, pitch, true));
             }
             if s.life % 2 == 0 && ((s.life / 2) as usize) < s.explosions.len() {
-                let e = s.explosions[(s.life / 2) as usize].clone();
+                let e = &s.explosions[(s.life / 2) as usize];
                 // DyeColor.BLACK.getFireworkColor without colours.
-                let colors = if e.colors.is_empty() {
-                    vec![0x1E1B1B]
+                let colors: &[u32] = if e.colors.is_empty() {
+                    &[0x1E1B1B]
                 } else {
-                    e.colors.clone()
+                    &e.colors
                 };
                 match e.shape {
-                    FireworkShape::SmallBall => self.spark_ball(&s, 0.25, 2, &colors, &e),
-                    FireworkShape::LargeBall => self.spark_ball(&s, 0.5, 4, &colors, &e),
-                    FireworkShape::Star => self.spark_shape(&s, 0.5, &STAR, &colors, &e, false),
-                    FireworkShape::Creeper => {
-                        self.spark_shape(&s, 0.5, &CREEPER, &colors, &e, true)
-                    }
+                    FireworkShape::SmallBall => self.spark_ball(s, 0.25, 2, colors, e),
+                    FireworkShape::LargeBall => self.spark_ball(s, 0.5, 4, colors, e),
+                    FireworkShape::Star => self.spark_shape(s, 0.5, &STAR, colors, e, false),
+                    FireworkShape::Creeper => self.spark_shape(s, 0.5, &CREEPER, colors, e, true),
                     FireworkShape::Burst => {
                         let g = |r: &mut LegacyRandom| r.next_gaussian();
                         let (bx, bz) = (g(&mut self.random) * 0.05, g(&mut self.random) * 0.05);
@@ -3209,7 +3272,7 @@ impl ParticleEngine {
                             let xa = s.v[0] * 0.5 + g(&mut self.random) * 0.15 + bx;
                             let za = s.v[2] * 0.5 + g(&mut self.random) * 0.15 + bz;
                             let ya = s.v[1] * 0.5 + self.random.next_double() * 0.5;
-                            self.spark_from(&s, [xa, ya, za], &colors, &e);
+                            self.spark_from(s, [xa, ya, za], colors, e);
                         }
                     }
                 }
@@ -3238,9 +3301,16 @@ impl ParticleEngine {
                     let pitch = 0.9 + self.random.next_float() * 0.15;
                     self.sounds.push((sound, s.at, 20.0, pitch, true));
                 }
-                continue;
+                false
+            } else {
+                true
             }
-            self.starters.push(s);
+        });
+        if self.starters.is_empty() {
+            self.starters = starters;
+        } else {
+            starters.append(&mut self.starters);
+            self.starters = starters;
         }
     }
     /// Starter.createParticle: a random colour and fade colour.
@@ -3323,37 +3393,55 @@ impl ParticleEngine {
     pub fn tick(&mut self, level: &ParticleLevel) {
         self.tick_starters();
         self.tick_explosions(level);
-        for (options, feet, width, height, life) in std::mem::take(&mut self.emitters) {
-            self.emit(&options, feet, width, height);
-            if life > 1 {
-                self.emitters.push((options, feet, width, height, life - 1));
-            }
+        if !self.emitters.is_empty() {
+            let mut emitters = std::mem::take(&mut self.emitters);
+            emitters.retain_mut(|(options, feet, width, height, life)| {
+                self.emit(options, *feet, *width, *height);
+                *life -= 1;
+                *life > 0
+            });
+            self.emitters = emitters;
         }
-        let mut particles = std::mem::take(&mut self.particles);
-        for p in &mut particles {
-            self.tick_particle(p, level);
+        if !self.particles.is_empty() {
+            let mut particles = std::mem::take(&mut self.particles);
+            for p in &mut particles {
+                self.tick_particle(p, level);
+            }
+            particles.retain(|p| !p.removed);
+            self.particles = particles;
         }
-        particles.retain(|p| !p.removed);
-        self.particles = particles;
-        let pending = std::mem::take(&mut self.pending);
-        for mut p in pending {
-            if p.pre_tick {
-                p.pre_tick = false;
-                self.tick_particle(&mut p, level);
-                p.after_constructor_tick();
-            }
-            // ParticleGroup.add: the last quarter fills with decreasing probability.
-            let size = self.particles.len();
-            if size >= MAX_PARTICLES {
-                continue;
-            }
-            if size >= 12288 {
-                let free = (MAX_PARTICLES - size) as f32 / 4096.0;
-                if self.random.next_float() >= free * free {
+        if !self.pending.is_empty() {
+            let mut pending = std::mem::take(&mut self.pending);
+            for item in pending.drain(..) {
+                let mut p = item;
+                if p.pre_tick {
+                    p.pre_tick = false;
+                    self.tick_particle(&mut p, level);
+                    p.after_constructor_tick();
+                }
+                // ParticleGroup.add: the last quarter fills with decreasing probability.
+                let size = self.particles.len();
+                if size >= MAX_PARTICLES {
                     continue;
                 }
+                if size >= 12288 {
+                    let free = (MAX_PARTICLES - size) as f32 / 4096.0;
+                    if self.random.next_float() >= free * free {
+                        continue;
+                    }
+                }
+                self.particles.push(p);
             }
-            self.particles.push(p);
+            // Keep the pending buffer warm across ticks without hoarding after huge spikes.
+            if pending.capacity() > 4096 {
+                pending.shrink_to(1024);
+            }
+            if self.pending.is_empty() {
+                self.pending = pending;
+            } else {
+                pending.append(&mut self.pending);
+                self.pending = pending;
+            }
         }
     }
     /// `ClientExplosionTracker.tick`: throws up to 512 debris particles across all
@@ -3547,14 +3635,21 @@ impl ParticleEngine {
                     p.velocity[2] *= f64::from(0.7f32);
                 }
                 let b = ParticleLevel::block_at(p.position);
-                let top = level.collision_top(
-                    b,
-                    p.position[0] - f64::from(b[0]),
-                    p.position[2] - f64::from(b[2]),
-                );
-                let offset = top.max(level.fluid(b).1);
-                if offset > 0.0 && p.position[1] < f64::from(b[1]) + offset {
-                    p.removed = true;
+                let state = level.world.block(b[0], b[1], b[2]);
+                if state != level.world.air {
+                    let top = level.collision_top_of(
+                        state,
+                        p.position[0] - f64::from(b[0]),
+                        p.position[2] - f64::from(b[2]),
+                    );
+                    let offset = if top >= 1.0 {
+                        top
+                    } else {
+                        top.max(level.fluid_of(state, b).1)
+                    };
+                    if offset > 0.0 && p.position[1] < f64::from(b[1]) + offset {
+                        p.removed = true;
+                    }
                 }
             }
             Behaviour::Bubble => {
@@ -3570,7 +3665,7 @@ impl ParticleEngine {
                 for c in &mut p.velocity {
                     *c *= f64::from(0.85f32);
                 }
-                if level.fluid(ParticleLevel::block_at(p.position)).0 != Fluid::Water {
+                if level.fluid_kind(ParticleLevel::block_at(p.position)) != Fluid::Water {
                     p.removed = true;
                 }
             }
@@ -3630,36 +3725,21 @@ impl ParticleEngine {
             Behaviour::GeyserEruption { water_blocks, aux } => {
                 p.base_tick(level);
                 if p.age % 2 == 0 {
+                    let base =
+                        ParticleOptions::geyser_base(ParticleType::GeyserBase, water_blocks, 1.5);
                     for _ in 0..2 {
-                        self.add(
-                            &ParticleOptions::geyser_base(
-                                ParticleType::GeyserBase,
-                                water_blocks,
-                                1.5,
-                            ),
-                            p.position,
-                            aux,
-                        );
+                        self.add(&base, p.position, aux);
                     }
                 }
+                let plume = ParticleOptions::geyser(ParticleType::GeyserPlume, water_blocks);
                 for _ in 0..water_blocks + 2 {
-                    self.add(
-                        &ParticleOptions::geyser(ParticleType::GeyserPlume, water_blocks),
-                        p.position,
-                        aux,
-                    );
+                    self.add(&plume, p.position, aux);
                 }
                 if p.age % 10 == 0 {
+                    let poof =
+                        ParticleOptions::geyser_base(ParticleType::GeyserPoof, water_blocks, 2.0);
                     for _ in 0..20 {
-                        self.add(
-                            &ParticleOptions::geyser_base(
-                                ParticleType::GeyserPoof,
-                                water_blocks,
-                                2.0,
-                            ),
-                            p.position,
-                            aux,
-                        );
+                        self.add(&poof, p.position, aux);
                     }
                 }
             }
@@ -3702,7 +3782,8 @@ impl ParticleEngine {
             }
             Behaviour::BubbleColumnUp => {
                 p.base_tick(level);
-                if !p.removed && level.fluid(ParticleLevel::block_at(p.position)).0 != Fluid::Water
+                if !p.removed
+                    && level.fluid_kind(ParticleLevel::block_at(p.position)) != Fluid::Water
                 {
                     p.removed = true;
                 }
@@ -3732,7 +3813,8 @@ impl ParticleEngine {
                 p.velocity[0] *= 0.07;
                 p.velocity[2] *= 0.07;
                 p.move_by(level, p.velocity);
-                if level.fluid(ParticleLevel::block_at(p.position)).0 != Fluid::Water || p.on_ground
+                if level.fluid_kind(ParticleLevel::block_at(p.position)) != Fluid::Water
+                    || p.on_ground
                 {
                     p.removed = true;
                 }
@@ -3868,6 +3950,7 @@ impl ParticleEngine {
             }
             Behaviour::GustSeed { scale, delay } => {
                 if p.age % (delay + 1) == 0 {
+                    let gust = ParticleOptions::simple(ParticleType::Gust);
                     for _ in 0..3 {
                         let r = &mut p.random;
                         let at = [
@@ -3876,11 +3959,7 @@ impl ParticleEngine {
                             p.position[2] + (r.next_double() - r.next_double()) * scale,
                         ];
                         let f = f64::from(p.age as f32 / p.lifetime as f32);
-                        self.add(
-                            &ParticleOptions::simple(ParticleType::Gust),
-                            at,
-                            [f, 0.0, 0.0],
-                        );
+                        self.add(&gust, at, [f, 0.0, 0.0]);
                     }
                 }
                 let age = p.age;
@@ -3890,6 +3969,7 @@ impl ParticleEngine {
                 }
             }
             Behaviour::ExplosionSeed => {
+                let explosion = ParticleOptions::simple(ParticleType::Explosion);
                 for _ in 0..6 {
                     let r = &mut p.random;
                     let at = [
@@ -3898,11 +3978,7 @@ impl ParticleEngine {
                         p.position[2] + (r.next_double() - r.next_double()) * 4.0,
                     ];
                     let f = f64::from(p.age as f32 / p.lifetime as f32);
-                    self.add(
-                        &ParticleOptions::simple(ParticleType::Explosion),
-                        at,
-                        [f, 0.0, 0.0],
-                    );
+                    self.add(&explosion, at, [f, 0.0, 0.0]);
                 }
                 p.age += 1;
                 if p.age == p.lifetime {
@@ -4007,13 +4083,15 @@ impl ParticleEngine {
                     let relative = (alive / 300.0).min(1.0);
                     let (mut xa, mut za) = (0.0f64, 0.0f64);
                     if flow {
-                        xa += flow_scale[0] * f64::from(relative).powf(1.25);
-                        za += flow_scale[1] * f64::from(relative).powf(1.25);
+                        let factor = f64::from(relative).powf(1.25);
+                        xa += flow_scale[0] * factor;
+                        za += flow_scale[1] * factor;
                     }
                     if swirl {
                         let rel = f64::from(relative);
-                        xa += rel * (rel * swirl_period).cos() * f64::from(wind);
-                        za += rel * (rel * swirl_period).sin() * f64::from(wind);
+                        let (sin, cos) = (rel * swirl_period).sin_cos();
+                        xa += rel * cos * f64::from(wind);
+                        za += rel * sin * f64::from(wind);
                     }
                     p.velocity[0] += xa * f64::from(0.0025f32);
                     p.velocity[2] += za * f64::from(0.0025f32);
