@@ -384,6 +384,12 @@ self-contained performance change that applied to this tree:
   `Placement::DimensionOrigin` arm. The upstream `references_preserves_grid_order_across_busy_and_
   deferred_chunks` test targets a newer `StartContext` (`base_columns_by`/`noise_column_into`) and
   a `worldgen::structure_terrain` module this tree lacks, so it is dropped; the perf change is kept.
+- `8af680316d` (partial) — `FnState` caches the `#minecraft:tick` functions resolved at a
+  store load (`replace_store`/`ticking`), so the tick reads its list instead of expanding the tag
+  every tick. The larger half — the `DataStore` tag-expansion rewrite (each tag resolved once,
+  iterative Tarjan SCC, no recursion) — targets a newer pre-image with `invalid_function_tags`
+  and `remove` tag entries, absent here, so it is left out. Adapted to this tree's
+  `game/functions.rs` and its 2-tuple `function_tags`.
 - `24dcd97129` (prerequisite, not in the perf list) — `dimension_origin` is decoded as
   `Placement::DimensionOrigin` and given the generator's origin chunk (`StructureRegistry::origin`
   from `NoiseSpawnFinder`/`ChunkPos::ZERO`), so a set that uses it places its start instead of
@@ -441,7 +447,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
 `e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`, `15824fc6f3` (with prerequisite
-`24dcd97129`).
+`24dcd97129`), `8af680316d` (partial).
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -515,7 +521,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `e095541dc6` | partially absent | 2 | 1 | perf(client): -35 MB RD 32 steady RSS via reusable remote chunk DecodeScratch and palette-safe uniform pooling (#19530) |
 | `616c4fec2c` | partially absent | 4 | 2 | perf(client): -49 to -79 MB solo singleplayer steady RSS via ChunkEncoder wire-cache release (#19528) |
 | `1d0b68bcbb` | partially absent | 10 | 6 | perf(client): Battery Mode halves every pool the client starts (#18465) |
-| `8af680316d` | partially absent | 2 | 1 | perf(commands): each function tag is expanded once, without recursion (#20088) |
 | `35182ca465` | partially absent | 6 | 1 | perf(creative): index stack deduplication during tab rebuilds (#18459) |
 | `c94d887bda` | partially absent | 22 | 18 | perf(entities): an armor stand nobody has borrowed mutably keeps its network entry (#19864) |
 | `f60fd796db` | partially absent | 6 | 4 | perf(far-terrain): limit far work to one job at a time through a world entry's first near load (#20457) |
