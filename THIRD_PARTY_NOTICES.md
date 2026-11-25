@@ -14,6 +14,10 @@ Apache-2.0; both licenses are in that folder (`LICENSE.MIT`, `LICENSE.APACHE`).
 fixes to its GLSL frontend that shader packs need, each applied in the commit that needed it. It is licensed under MIT or Apache-2.0; both licenses
 are in that folder (`LICENSE.MIT`, `LICENSE.APACHE`).
 
+The SPIR-V backend leaves out the counter and exit it adds to every loop (`force_loop_bounding`) where
+`back/bounded_loop.rs`, a module of Horizon's, proves that the loop ends by itself: a local integer
+counter that only the loop's own step changes, compared with a bound it cannot wrap past.
+
 ## libmimalloc-sys and mimalloc
 
 `third_party/libmimalloc-sys` is [libmimalloc-sys](https://github.com/purpleprotocol/mimalloc_rust)
