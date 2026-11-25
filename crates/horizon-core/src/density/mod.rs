@@ -153,6 +153,45 @@ pub trait DensitySampler: std::fmt::Debug + Send + Sync {
             Ok(())
         })
     }
+
+    /// [`Self::sample_volume`] for a caller that reads only the Ys set in `needed`: bit `y` of
+    /// `needed[column]`, X/Z columns in buffer order. The other values may differ.
+    fn sample_needed(
+        &self,
+        context: &mut SamplerContext,
+        buffer: &mut [f32],
+        volume: DensityVolume,
+        _needed: &[u64],
+    ) -> Result<(), SampleError> {
+        self.sample_volume(context, buffer, volume)
+    }
+
+    /// `Some(inputs)` when each value `sample_volume` writes depends only on
+    /// its own block position and on the same values of `inputs`: never on
+    /// the volume's origin, extent or other samples, nor on world fields.
+    /// `None` (the default) is the conservative answer.
+    fn pointwise_inputs(&self) -> Option<Vec<&Arc<dyn DensitySampler>>> {
+        None
+    }
+}
+/// `sample_needed` with a mask of needed Ys, `sample_volume` without one.
+fn sample_with(
+    sampler: &dyn DensitySampler,
+    context: &mut SamplerContext,
+    buffer: &mut [f32],
+    volume: DensityVolume,
+    needed: Option<&[u64]>,
+) -> Result<(), SampleError> {
+    match needed {
+        Some(needed) => sampler.sample_needed(context, buffer, volume, needed),
+        None => sampler.sample_volume(context, buffer, volume),
+    }
+}
+/// A [`DensitySampler::sample_needed`] mask that has a bit for every Y of every column of
+/// `volume`; any other mask means every value is needed.
+fn usable_mask(needed: &[u64], volume: DensityVolume) -> Option<&[u64]> {
+    let [size_x, size_y, size_z] = volume.sizes();
+    (size_y <= 64 && needed.len() >= size_x * size_z).then_some(needed)
 }
 fn check_buffer(buffer: &[f32], volume: DensityVolume) -> Result<(), SampleError> {
     if buffer.len() < volume.size() {

@@ -435,6 +435,19 @@ self-contained performance change that applied to this tree:
   upstream `pixel_count`/`pack_timing::counted` per-stage timing wrapper is absent here, so the
   coalescing is done without it, and the shader-parsing test that used `gfx::terrain_shader()` is
   dropped (the three shader-validation tests still cover the WGSL).
+- `51670062e1` — flat `SplineSampler` arena. `CubicSpline` compiles once into a
+  `CompiledSpline` arena (nodes, locations, derivatives, children as `Box<[..]>`, children as
+  `CompiledChild::Constant`/`Node`), and a sample walks node indices instead of a recursive
+  `Box`/`Vec` tree, so the scalar path is 1.61x faster and a volume pass no longer allocates
+  per cell. Coordinate samplers are filled lazily into recycled `Vec` buffers in coordinate-ID
+  order (`BufferSlots`, inline when there are at most eight), and `sample_needed` evaluates only
+  the masked Ys. The arena path has bit-exact tests against a recursive reference (depth 4,
+  NaN/unsorted/duplicate/wide points, coordinate overflow above the inline limit). Adapted to
+  this tree: upstream's `pointwise_inputs`/`is_pointwise` lattice-reuse helpers and the
+  `needed_where` mask builder are absent here, so only the `sample_needed`/`sample_with`/
+  `usable_mask` pieces the spline needs were added to `density/mod.rs` (default
+  `pointwise_inputs` returns `None`, the spline reports its coordinates), and the test that
+  asserts the spline is pointwise keeps working through that split.
 - `fba8c0452c` — `HudBatch::clip_since` cuts quads where they are (kept quads move down with
   `copy_within`, a cut one writes over its own slots, only a growing cut moves the unread rest)
   through a `clip_quad` helper, instead of cloning every quad out and putting each part back.
@@ -474,7 +487,6 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `e8618f82ba` | +6.0..10.0% | `ChunkMap` toroidal cache kept hot | the toroidal grid came from an earlier absent commit; `chunk_map.rs` here is 385 lines against 1165 pre-image |
 | `d8f558197d` | +8.7..11.6% RD32 | conservative reversed-Z Hi-Z pyramid occlusion culling | adds `gfx/gpu_culling.rs` and `gfx/gpu_occlusion.wgsl`, absent here |
 | `12cd1ed563` | density | `IntervalSelectSampler` duplicate threshold scans | LerpSampler half ported; the IntervalSelect half needs the `needed`-mask sampler refactor, absent here |
-| `51670062e1` | 1.61x scalar | flat `SplineSampler` arena | needs `sample_with`/`usable_mask`, absent here |
 | `ebb6ee7a8a` | server | share encoded chunk bodies | needs `Body::Shared`/`Encoder::bodies_with`, absent here: this tree's `Body` is `Level(usize)`/`Saved(Arc<[u8]>)` and `send_many` takes owned `Vec<u8>`, so the sharing would need the owned-vs-shared send body first |
 | `3fa98d1bd8`, `f71ddcce2d` | font | large multi-region rewrites | diverge from this tree's older forms, deferred |
 | `dedb0375a4` | sprites | streaming sprite/CTM layout | `sprites.rs` here is 1319 lines against a 2349-line pre-image; 23 of its 25 hunks reject, so it needs the absent png/animation-layout refactor first |
@@ -501,7 +513,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
 `e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`, `15824fc6f3` (with prerequisite
 `24dcd97129`), `8af680316d` (partial), `616c4fec2c`, `fba8c0452c`, `533bb2cdd3`, `ad406095d4`
-(partial), `e08d2e53a5`.
+(partial), `e08d2e53a5`, `51670062e1`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -533,7 +545,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `c2ee7380c3` | api/semantics | 1 | 0 | perf(shaders): a shader pack's global of literals is initialized by the module, not stored again in every invocation (#19715) |
 | `a8e58dcedf` | api/semantics | 6 | 0 | perf(worldgen): -15.1% decorate wall time via stand-in chunk pooling, ore/placement scratch reuse, and warm-biome shortcut (#20191) |
 | `211e07fc54` | api/semantics | 7 | 0 | perf(worldgen): bounded per-worker CompiledSurfaceRule variant cache and fast column writes (#20190) |
-| `51670062e1` | api/semantics | 1 | 0 | perf(worldgen): flat contiguous compiled SplineSampler arena (1.61x faster scalar, -12.8% zero-alloc volume) (#20476) |
 | `f618858113` | files absent | 4 | 4 | bug(mods): a game with native mods keeps Play with Friends and Horizon's other official parts (#19408) |
 | `937363f340` | files absent | 3 | 3 | fix(tooling): reading a .hzperf capture stops at a limit on what it inflates (#20350) |
 | `bf1294c568` | files absent | 7 | 7 | perf(carts): a cart takes the boxes of the carts near it once when its tick begins (#18043) |
