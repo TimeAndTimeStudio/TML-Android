@@ -390,6 +390,12 @@ self-contained performance change that applied to this tree:
   iterative Tarjan SCC, no recursion) — targets a newer pre-image with `invalid_function_tags`
   and `remove` tag entries, absent here, so it is left out. Adapted to this tree's
   `game/functions.rs` and its 2-tuple `function_tags`.
+- `616c4fec2c` — `ChunkEncoder` gains `retain_wire`: with one receiver (solo) encoded wire
+  sections and heightmaps are not kept across sends, `set_retain_wire` drops what is stored and
+  `clear_batch_wire` runs after a batch is encoded; multiplayer keeps the cache. Adapted to this
+  tree's per-column `body_with` (upstream's `bodies_with` batch is absent) and its bulk
+  block-change path, which also warms, so it sets the flag and clears afterwards too. Upstream's
+  hub test uses an absent `cache_census` and is dropped; the `chunks.rs` test is ported.
 - `24dcd97129` (prerequisite, not in the perf list) — `dimension_origin` is decoded as
   `Placement::DimensionOrigin` and given the generator's origin chunk (`StructureRegistry::origin`
   from `NoiseSpawnFinder`/`ChunkPos::ZERO`), so a set that uses it places its start instead of
@@ -447,7 +453,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
 `e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`, `15824fc6f3` (with prerequisite
-`24dcd97129`), `8af680316d` (partial).
+`24dcd97129`), `8af680316d` (partial), `616c4fec2c`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -519,7 +525,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `9bda820d2f` | partially absent | 5 | 4 | perf(blocks): borrow crafting grids and reuse non-empty stack slices per recipe lookup (#20456) |
 | `5cbec47ee2` | partially absent | 25 | 12 | perf(client): +4.2% stress_mobs FPS and lower per-frame entity/mob/item render-prep allocations (#19531) |
 | `e095541dc6` | partially absent | 2 | 1 | perf(client): -35 MB RD 32 steady RSS via reusable remote chunk DecodeScratch and palette-safe uniform pooling (#19530) |
-| `616c4fec2c` | partially absent | 4 | 2 | perf(client): -49 to -79 MB solo singleplayer steady RSS via ChunkEncoder wire-cache release (#19528) |
 | `1d0b68bcbb` | partially absent | 10 | 6 | perf(client): Battery Mode halves every pool the client starts (#18465) |
 | `35182ca465` | partially absent | 6 | 1 | perf(creative): index stack deduplication during tab rebuilds (#18459) |
 | `c94d887bda` | partially absent | 22 | 18 | perf(entities): an armor stand nobody has borrowed mutably keeps its network entry (#19864) |
