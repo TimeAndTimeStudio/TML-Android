@@ -326,6 +326,11 @@ self-contained performance change that applied to this tree:
   path; `can_use` becomes `option_usable`, which also rejects unknown keys so the separate
   `OPTIONS.contains` check goes. This fork has no mod system, so the `selector_tokens` lookup the
   commit also guards is not present to adapt.
+- `dd3ed413f2` — `pack_words` assembles one 64-bit word at a time instead of locating and
+  read-modify-writing each slot, and `unpack`/`unpack_ids_mapped`/`unpack_ids` get const-generic
+  fixed-width arms (4-8, 15-16) with immediate shifts. The tree already had `unpack_mapped_fixed`
+  after `unpack_ids_mapped`; that duplicate is folded into the helpers block the patch adds before
+  `unpack`. The absent `paletted/tests.rs` and the CI ignore lists are dropped.
 - `8197ba2363` — Horizon's new `third_party/naga/src/back/bounded_loop.rs` proves a SPIR-V
   loop finite (a local integer counter only its own step changes, compared with a bound it cannot
   wrap past), so the SPIR-V backend leaves out its `force_loop_bounding` counter and exit and the
@@ -425,7 +430,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
-`e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`.
+`e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -524,7 +529,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `8989a510ff` | partially absent | 7 | 5 | perf(mods): link a content root's directories as junctions on Windows (#17546) |
 | `37352802a1` | partially absent | 3 | 1 | perf(motion): add stationary fast paths for replayed_tick, server_travel, and flat support (#19072) |
 | `7954f21558` | partially absent | 4 | 2 | perf(network): frame the small packets of a run in place, counted once (#17380) |
-| `dd3ed413f2` | partially absent | 4 | 3 | perf(paletted): pack words sequentially and specialize 4-8/15-16 bit unpack (#19875) |
 | `bfa705b62a` | partially absent | 6 | 5 | perf(protocol): scope legacy guards to their actual readers (#20212) |
 | `a71b87a3d5` | partially absent | 3 | 2 | perf(protocol): serialize network NBT directly into packets (#19931) |
 | `82e61665c4` | partially absent | 5 | 2 | perf(render): +17.3% ocean and +8.7% village chunk meshing throughput (-25.4% max section) via mesher fast paths (#19523) |
