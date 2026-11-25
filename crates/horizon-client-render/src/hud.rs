@@ -2156,6 +2156,88 @@ pub struct EndPortalFill {
 pub fn rgba(r: u8, g: u8, b: u8, a: u8) -> u32 {
     u32::from(a) << 24 | u32::from(b) << 16 | u32::from(g) << 8 | u32::from(r)
 }
+/// What [`HudBatch::clip_since`] keeps of quad `q` inside `x0, y0, x1, y1`, appended to `out`.
+fn clip_quad(q: [HudVertex; 6], [x0, y0, x1, y1]: [f32; 4], out: &mut Vec<HudVertex>) {
+    // A quad wholly inside keeps all of itself. One wholly outside keeps nothing. Only a quad
+    // across an edge is cut below.
+    let (mut lo, mut hi) = ([f32::INFINITY; 2], [f32::NEG_INFINITY; 2]);
+    for v in &q {
+        for axis in 0..2 {
+            lo[axis] = lo[axis].min(v.pos[axis]);
+            hi[axis] = hi[axis].max(v.pos[axis]);
+        }
+    }
+    if lo[0] >= x0 && hi[0] <= x1 && lo[1] >= y0 && hi[1] <= y1 {
+        out.extend_from_slice(&q);
+        return;
+    }
+    if hi[0] <= x0 || lo[0] >= x1 || hi[1] <= y0 || lo[1] >= y1 {
+        return;
+    }
+    let corners = [q[0], q[1], q[2], q[5]];
+    let (mut x_lo, mut x_hi) = (f32::INFINITY, f32::NEG_INFINITY);
+    let (mut y_lo, mut y_hi) = (f32::INFINITY, f32::NEG_INFINITY);
+    for v in &corners {
+        x_lo = x_lo.min(v.pos[0]);
+        x_hi = x_hi.max(v.pos[0]);
+        y_lo = y_lo.min(v.pos[1]);
+        y_hi = y_hi.max(v.pos[1]);
+    }
+    let find = |x: f32, y: f32| corners.iter().find(|v| v.pos == [x, y]).copied();
+    let rect = (
+        find(x_lo, y_lo),
+        find(x_hi, y_lo),
+        find(x_hi, y_hi),
+        find(x_lo, y_hi),
+    );
+    let (Some(tl), Some(tr), Some(br), Some(bl)) = rect else {
+        for tri in [[q[0], q[1], q[2]], [q[3], q[4], q[5]]] {
+            let area = (tri[1].pos[0] - tri[0].pos[0]) * (tri[2].pos[1] - tri[0].pos[1])
+                - (tri[2].pos[0] - tri[0].pos[0]) * (tri[1].pos[1] - tri[0].pos[1]);
+            if area == 0.0 {
+                continue;
+            }
+            let mut poly = tri.to_vec();
+            for (axis, limit, keep_below) in
+                [(0, x0, false), (0, x1, true), (1, y0, false), (1, y1, true)]
+            {
+                poly = clip_polygon(&poly, axis, limit, keep_below);
+            }
+            for i in 1..poly.len().saturating_sub(1) {
+                let (a, b, c) = (poly[0], poly[i], poly[i + 1]);
+                out.extend_from_slice(&[a, b, c, a, c, c]);
+            }
+        }
+        return;
+    };
+    let (cx0, cy0) = (x_lo.max(x0), y_lo.max(y0));
+    let (cx1, cy1) = (x_hi.min(x1), y_hi.min(y1));
+    if cx0 >= cx1 || cy0 >= cy1 {
+        return;
+    }
+    let t = |p: f32, lo: f32, hi: f32| if hi == lo { 0.0 } else { (p - lo) / (hi - lo) };
+    let uv = |x: f32, y: f32| {
+        let (s, r) = (t(x, x_lo, x_hi), t(y, y_lo, y_hi));
+        std::array::from_fn(|i| {
+            let top = tl.uv[i] + (tr.uv[i] - tl.uv[i]) * s;
+            let bottom = bl.uv[i] + (br.uv[i] - bl.uv[i]) * s;
+            top + (bottom - top) * r
+        })
+    };
+    let p = [[cx0, cy0], [cx1, cy0], [cx1, cy1], [cx0, cy1]];
+    let uvs = [uv(cx0, cy0), uv(cx1, cy0), uv(cx1, cy1), uv(cx0, cy1)];
+    for i in [0, 1, 2, 0, 2, 3] {
+        out.push(HudVertex {
+            pos: p[i],
+            uv: uvs[i],
+            color: tl.color,
+            depth: 0.0,
+            glint_uv: [0.0, 0.0],
+            text: tl.text,
+        });
+    }
+}
+
 impl HudBatch {
     /// Window.calculateScale: the largest scale keeping >= 320x240 GUI pixels,
     /// capped by the GUI Scale option (0 = auto).
@@ -2383,77 +2465,52 @@ impl HudBatch {
         }
     }
     pub fn clip_since(&mut self, start: usize, x0: f32, y0: f32, x1: f32, y1: f32) {
-        let quads: Vec<[HudVertex; 6]> = self.vertices[start..].as_chunks::<6>().0.to_vec();
-        self.vertices.truncate(start);
-        // Where each source quad now begins, to move the blend ranges (foil
-        // items are an additive run) along with their vertices.
-        let mut moved = Vec::with_capacity(quads.len() + 1);
-        for q in quads {
-            moved.push(self.vertices.len() as u32);
-            let corners = [q[0], q[1], q[2], q[5]];
-            let (mut x_lo, mut x_hi) = (f32::INFINITY, f32::NEG_INFINITY);
-            let (mut y_lo, mut y_hi) = (f32::INFINITY, f32::NEG_INFINITY);
-            for v in &corners {
-                x_lo = x_lo.min(v.pos[0]);
-                x_hi = x_hi.max(v.pos[0]);
-                y_lo = y_lo.min(v.pos[1]);
-                y_hi = y_hi.max(v.pos[1]);
-            }
-            // An axis-aligned rectangle, its corners in any order.
-            let find = |x: f32, y: f32| corners.iter().find(|v| v.pos == [x, y]).copied();
-            let rect = (
-                find(x_lo, y_lo),
-                find(x_hi, y_lo),
-                find(x_hi, y_hi),
-                find(x_lo, y_hi),
-            );
-            let (Some(tl), Some(tr), Some(br), Some(bl)) = rect else {
-                // Item geometry arrives as triangles: clip each against the
-                // rectangle and re-emit the fan, so a triangle straddling the
-                // edge keeps its visible part instead of vanishing whole.
-                for tri in [[q[0], q[1], q[2]], [q[3], q[4], q[5]]] {
-                    let area = (tri[1].pos[0] - tri[0].pos[0]) * (tri[2].pos[1] - tri[0].pos[1])
-                        - (tri[2].pos[0] - tri[0].pos[0]) * (tri[1].pos[1] - tri[0].pos[1]);
-                    if area == 0.0 {
-                        continue;
-                    }
-                    let mut poly = tri.to_vec();
-                    for (axis, limit, keep_below) in
-                        [(0, x0, false), (0, x1, true), (1, y0, false), (1, y1, true)]
-                    {
-                        poly = clip_polygon(&poly, axis, limit, keep_below);
-                    }
-                    for i in 1..poly.len().saturating_sub(1) {
-                        // A triangle as the quad `a, b, c, c`.
-                        let (a, b, c) = (poly[0], poly[i], poly[i + 1]);
-                        self.vertices.extend_from_slice(&[a, b, c, a, c, c]);
-                    }
+        // Cut where the quads are. The kept ones move down over what is gone, rather than taking
+        // all of them out and putting them back. Only when a cut quad grows past what is still
+        // to be read is the rest taken out and put back after it.
+        let count = (self.vertices.len() - start) / 6;
+        let mut moved = Vec::with_capacity(count + 1);
+        let mut cut_buf = Vec::new();
+        let mut write = start;
+        let mut index = 0;
+        let mut appending = false;
+        while index < count {
+            let read = start + index * 6;
+            let q: [HudVertex; 6] = self.vertices[read..read + 6].try_into().expect("six");
+            moved.push(write as u32);
+            index += 1;
+            let inside = q
+                .iter()
+                .all(|v| v.pos[0] >= x0 && v.pos[0] <= x1 && v.pos[1] >= y0 && v.pos[1] <= y1);
+            if inside {
+                if write != read {
+                    self.vertices.copy_within(read..read + 6, write);
                 }
-                continue;
-            };
-            let (cx0, cy0) = (x_lo.max(x0), y_lo.max(y0));
-            let (cx1, cy1) = (x_hi.min(x1), y_hi.min(y1));
-            if cx0 >= cx1 || cy0 >= cy1 {
+                write += 6;
                 continue;
             }
-            let t = |p: f32, lo: f32, hi: f32| if hi == lo { 0.0 } else { (p - lo) / (hi - lo) };
-            let uv = |x: f32, y: f32| {
-                let (s, r) = (t(x, x_lo, x_hi), t(y, y_lo, y_hi));
-                std::array::from_fn(|i| {
-                    let top = tl.uv[i] + (tr.uv[i] - tl.uv[i]) * s;
-                    let bottom = bl.uv[i] + (br.uv[i] - bl.uv[i]) * s;
-                    top + (bottom - top) * r
-                })
-            };
-            self.quad(
-                [[cx0, cy0], [cx1, cy0], [cx1, cy1], [cx0, cy1]],
-                [uv(cx0, cy0), uv(cx1, cy0), uv(cx1, cy1), uv(cx0, cy1)],
-                tl.color,
-            );
-            let end = self.vertices.len();
-            for v in &mut self.vertices[end - 6..] {
-                v.text = tl.text;
+            cut_buf.clear();
+            clip_quad(q, [x0, y0, x1, y1], &mut cut_buf);
+            if write + cut_buf.len() <= read + 6 {
+                self.vertices[write..write + cut_buf.len()].copy_from_slice(&cut_buf);
+                write += cut_buf.len();
+                continue;
             }
+            let rest: Vec<[HudVertex; 6]> = self.vertices[read + 6..start + count * 6]
+                .as_chunks::<6>()
+                .0
+                .to_vec();
+            self.vertices.truncate(write);
+            self.vertices.extend_from_slice(&cut_buf);
+            for q in rest {
+                moved.push(self.vertices.len() as u32);
+                clip_quad(q, [x0, y0, x1, y1], &mut self.vertices);
+            }
+            appending = true;
+            break;
+        }
+        if !appending {
+            self.vertices.truncate(write);
         }
         moved.push(self.vertices.len() as u32);
         let at = |v: u32| moved[((v as usize).saturating_sub(start) / 6).min(moved.len() - 1)];
@@ -3557,6 +3614,177 @@ mod tests {
         }
         let (w, h, rgba) = decode_bytes(&png).unwrap();
         assert_eq!((w, h, rgba), (2, 1, vec![255, 0, 0, 255, 0, 0, 255, 128]));
+    }
+
+    /// `clip_since` as it was: every quad taken out, and what is kept of each put back.
+    fn clip_by_copy(batch: &mut HudBatch, start: usize, x0: f32, y0: f32, x1: f32, y1: f32) {
+        let quads: Vec<[HudVertex; 6]> = batch.vertices[start..].as_chunks::<6>().0.to_vec();
+        batch.vertices.truncate(start);
+        let mut moved = Vec::new();
+        for q in quads {
+            moved.push(batch.vertices.len() as u32);
+            let corners = [q[0], q[1], q[2], q[5]];
+            let (mut x_lo, mut x_hi) = (f32::INFINITY, f32::NEG_INFINITY);
+            let (mut y_lo, mut y_hi) = (f32::INFINITY, f32::NEG_INFINITY);
+            for v in &corners {
+                x_lo = x_lo.min(v.pos[0]);
+                x_hi = x_hi.max(v.pos[0]);
+                y_lo = y_lo.min(v.pos[1]);
+                y_hi = y_hi.max(v.pos[1]);
+            }
+            let find = |x: f32, y: f32| corners.iter().find(|v| v.pos == [x, y]).copied();
+            let rect = (
+                find(x_lo, y_lo),
+                find(x_hi, y_lo),
+                find(x_hi, y_hi),
+                find(x_lo, y_hi),
+            );
+            let (Some(tl), Some(tr), Some(br), Some(bl)) = rect else {
+                for tri in [[q[0], q[1], q[2]], [q[3], q[4], q[5]]] {
+                    let area = (tri[1].pos[0] - tri[0].pos[0]) * (tri[2].pos[1] - tri[0].pos[1])
+                        - (tri[2].pos[0] - tri[0].pos[0]) * (tri[1].pos[1] - tri[0].pos[1]);
+                    if area == 0.0 {
+                        continue;
+                    }
+                    let mut poly = tri.to_vec();
+                    for (axis, limit, keep_below) in
+                        [(0, x0, false), (0, x1, true), (1, y0, false), (1, y1, true)]
+                    {
+                        poly = clip_polygon(&poly, axis, limit, keep_below);
+                    }
+                    for i in 1..poly.len().saturating_sub(1) {
+                        let (a, b, c) = (poly[0], poly[i], poly[i + 1]);
+                        batch.vertices.extend_from_slice(&[a, b, c, a, c, c]);
+                    }
+                }
+                continue;
+            };
+            let (cx0, cy0) = (x_lo.max(x0), y_lo.max(y0));
+            let (cx1, cy1) = (x_hi.min(x1), y_hi.min(y1));
+            if cx0 >= cx1 || cy0 >= cy1 {
+                continue;
+            }
+            let t = |p: f32, lo: f32, hi: f32| if hi == lo { 0.0 } else { (p - lo) / (hi - lo) };
+            let uv = |x: f32, y: f32| {
+                let (s, r) = (t(x, x_lo, x_hi), t(y, y_lo, y_hi));
+                std::array::from_fn(|i| {
+                    let top = tl.uv[i] + (tr.uv[i] - tl.uv[i]) * s;
+                    let bottom = bl.uv[i] + (br.uv[i] - bl.uv[i]) * s;
+                    top + (bottom - top) * r
+                })
+            };
+            batch.quad(
+                [[cx0, cy0], [cx1, cy0], [cx1, cy1], [cx0, cy1]],
+                [uv(cx0, cy0), uv(cx1, cy0), uv(cx1, cy1), uv(cx0, cy1)],
+                tl.color,
+            );
+            let end = batch.vertices.len();
+            for v in &mut batch.vertices[end - 6..] {
+                v.text = tl.text;
+            }
+        }
+        moved.push(batch.vertices.len() as u32);
+        let at = |v: u32| moved[((v as usize).saturating_sub(start) / 6).min(moved.len() - 1)];
+        for (range, _) in &mut batch.blends {
+            if range.start as usize >= start {
+                *range = at(range.start)..at(range.end);
+            }
+        }
+        batch.blends.retain(|(range, _)| !range.is_empty());
+    }
+
+    #[test]
+    fn a_clip_in_place_is_the_clip_by_copy() {
+        let mut seed = 0x2545_f491_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed >> 11) as f32 / (1u64 << 53) as f32
+        };
+        let vertex = |x: f32, y: f32, color: u32| HudVertex {
+            pos: [x, y],
+            uv: [x / 64.0, y / 64.0],
+            color,
+            depth: 0.0,
+            glint_uv: [0.0, 0.0],
+            text: 0,
+        };
+        for case in 0..80 {
+            let mut batch = HudBatch::new([854, 480]);
+            let start = (next() * 3.0) as usize * 6;
+            for _ in 0..start {
+                batch.vertices.push(vertex(-500.0, -500.0, 1));
+            }
+            let quads = 1 + (next() * 24.0) as usize;
+            for i in 0..quads {
+                let (x, y) = (next() * 120.0 - 10.0, next() * 120.0 - 10.0);
+                let (w, h) = (next() * 40.0 + 1.0, next() * 40.0 + 1.0);
+                let color = i as u32;
+                let c = [
+                    vertex(x, y, color),
+                    vertex(x + w, y, color),
+                    vertex(x + w, y + h, color),
+                    vertex(x, y + h, color),
+                ];
+                let q = [0, 1, 2, 0, 2, 3].map(|k| c[k]);
+                batch.vertices.extend_from_slice(&q);
+            }
+            let len = batch.vertices.len() as u32;
+            batch.blends.push((start as u32..len, Blend::Alpha));
+            let mut by_copy = HudBatch::new([854, 480]);
+            by_copy.vertices = batch.vertices.clone();
+            by_copy.blends = batch.blends.clone();
+            batch.clip_since(start, 10.0, 10.0, 80.0, 80.0);
+            clip_by_copy(&mut by_copy, start, 10.0, 10.0, 80.0, 80.0);
+            let bytes = |b: &HudBatch| bytemuck::cast_slice::<HudVertex, u8>(&b.vertices).to_vec();
+            assert!(bytes(&batch) == bytes(&by_copy), "case {case}: vertices");
+            assert_eq!(batch.blends, by_copy.blends, "case {case}: blends");
+        }
+    }
+
+    #[test]
+    fn clipping_growth_keeps_following_quads_and_their_blends() {
+        let uv = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        let outside = [[20.0, 1.0], [22.0, 1.0], [22.0, 3.0], [20.0, 3.0]];
+        let inside = [[10.0, 1.0], [12.0, 1.0], [12.0, 3.0], [10.0, 3.0]];
+        let triangle = [[0.0, 0.0], [16.0, 0.0], [0.0, 16.0], [0.0, 16.0]];
+        for discard_first in [false, true] {
+            let mut batch = HudBatch::new([320, 240]);
+            let mut draw = |corners, color, blend| {
+                let start = batch.vertices.len();
+                batch.quad(corners, uv, color);
+                batch.blend_since(start, blend);
+            };
+            // The cut triangle emits 12 vertices. A discarded first quad leaves six slots
+            // for its growth, otherwise clipping must move the unread quads out of the way.
+            if discard_first {
+                draw(outside, 0xff00_00ff, Blend::Vignette);
+            }
+            draw(triangle, 0xff00_ff00, Blend::Additive);
+            draw(inside, 0xff00_ffff, Blend::Invert);
+            draw(outside, 0xffff_0000, Blend::Vignette);
+
+            let mut by_copy = HudBatch::new([320, 240]);
+            by_copy.vertices = batch.vertices.clone();
+            by_copy.blends = batch.blends.clone();
+            batch.clip_since(0, -1.0, -1.0, 17.0, 4.0);
+            clip_by_copy(&mut by_copy, 0, -1.0, -1.0, 17.0, 4.0);
+            assert_eq!(
+                bytemuck::cast_slice::<HudVertex, u8>(&batch.vertices),
+                bytemuck::cast_slice::<HudVertex, u8>(&by_copy.vertices),
+                "discard_first={discard_first}"
+            );
+            assert_eq!(
+                batch.blends, by_copy.blends,
+                "discard_first={discard_first}"
+            );
+            assert_eq!(batch.vertices.len(), 18);
+            assert_eq!(
+                batch.blends,
+                [(0..12, Blend::Additive), (12..18, Blend::Invert)]
+            );
+        }
     }
 
     #[test]
