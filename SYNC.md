@@ -326,6 +326,13 @@ self-contained performance change that applied to this tree:
   path; `can_use` becomes `option_usable`, which also rejects unknown keys so the separate
   `OPTIONS.contains` check goes. This fork has no mod system, so the `selector_tokens` lookup the
   commit also guards is not present to adapt.
+- `e0bbdc1e25` — an open dialog keeps a `LayoutCache` keyed on the screen size, the font's
+  glyph epoch and the text direction, so `dialog_layout` returns a shared `Layout` instead of
+  re-wrapping its body every frame; `Part::Line` holds an `Arc<Text>` so copying the layout or
+  placing the body shares each line's text, and `line_style_at` uses `Text::resolved()`. The two
+  layout-cache tests are adapted to this tree's `Font::load(path, ...)` and 5-arg `line_style_at`;
+  the upstream text-direction test needs `lang::isolate_publication`, absent here, so it is
+  dropped.
 - `d9b8e7bef2` (partial) — the TrueType per-char `HashMap<char, GlyphId>` is replaced by a
   compact canonical table (one `Option<char>` per glyph ID from `codepoint_ids()`) plus a sorted
   override list for the rare multi-subtable case, and `TrueType::glyph_id` reads it; the
@@ -405,7 +412,8 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
-`07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half).
+`07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
+`e0bbdc1e25`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -535,7 +543,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `2798431890` | partially absent | 8 | 3 | perf(shaders): a pack's shadow pass sorts its sections once and draws the solid ones with indirect multi-draws (#19806) |
 | `6fd61f2dcc` | partially absent | 19 | 15 | perf(shaders): compile native shader packs asynchronously and batch option edits (#20601) |
 | `cbac118119` | partially absent | 9 | 6 | perf(streaming): 92x faster PendingUploads priority queue, O(1) settlement checks and batched Job::Free lock (#20473) |
-| `e0bbdc1e25` | partially absent | 3 | 1 | perf(ui): a dialog is laid out once per screen size, not every frame (#19237) |
 | `e8618f82ba` | partially absent | 13 | 11 | perf(world): +6.0% to +10.0% FPS (+19.9% village 1% low) by keeping ChunkMap toroidal cache hot via grid_missing counter and pub mutate_chunk (#20195) |
 | `182e08c079` | partially absent | 4 | 1 | perf(world): add O(1) id index and well-known lookup to LiveAttributes (#19077) |
 | `276a8e844f` | partially absent | 4 | 2 | perf(world): cache awake block entity tickers and refresh mid-pass on wake (#19079) |
