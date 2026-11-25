@@ -300,6 +300,10 @@ self-contained performance change that applied to this tree:
   a finalizer holds it), so the overworld and the Nether read the files once instead of once each.
   Adapted to this tree's `StructureMobFinalizer`, which has no `item_data`: cells are keyed on the
   root alone.
+- `c415b158fe` — `fluid_base_tick` returns early when `MotionWorld::is_dry_air_fast` proves no fluid
+  can change this tick: the player's fluid flags, state and deflated bounds (plus the eye cell) are
+  scanned and every cell must be `FluidKind::Empty`, with a bounded block count. The upstream
+  daily equivalence test needs test fixtures absent here and is left out.
 
 Already present in this tree (verified by their code being in `HEAD`): `ab44288662` (cloud
 `CloudMask` rebuild) and most of `e349aeccea` (packed light BFS; only upstream's later
@@ -343,7 +347,8 @@ gap without porting the intermediate commit first. The prerequisite is named for
 Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`, `5db9bc3f45`,
 `d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
-`150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`.
+`150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
+`c415b158fe`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -448,7 +453,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `b6e61677b7` | partially absent | 4 | 2 | perf(mobs): lock-free seqlock PathTypeCache (4.44x faster under 8-thread contention) and zero-alloc A* Finder (#20477) |
 | `a82b6173e5` | partially absent | 18 | 11 | perf(mobs): search a target among the slots of its species, not every mob nearby (#18029) |
 | `8989a510ff` | partially absent | 7 | 5 | perf(mods): link a content root's directories as junctions on Windows (#17546) |
-| `c415b158fe` | partially absent | 3 | 1 | perf(motion): add dry-air fast path for fluid_base_tick (#19549) |
 | `37352802a1` | partially absent | 3 | 1 | perf(motion): add stationary fast paths for replayed_tick, server_travel, and flat support (#19072) |
 | `7954f21558` | partially absent | 4 | 2 | perf(network): frame the small packets of a run in place, counted once (#17380) |
 | `dd3ed413f2` | partially absent | 4 | 3 | perf(paletted): pack words sequentially and specialize 4-8/15-16 bit unpack (#19875) |
