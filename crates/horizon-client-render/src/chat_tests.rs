@@ -818,3 +818,41 @@ fn a_chat_message_is_cut_to_the_256_utf16_units_the_packet_holds() {
     let mixed = format!("{}\u{1f600}", "b".repeat(255));
     assert_eq!(normalize_chat_message(&mixed), "b".repeat(255));
 }
+
+/// The lines a message adds as the loop did before only the survivors were kept:
+/// every wrapped line inserted at the front, the trim to 100 after the last.
+fn reference_lines(chat: &Chat, font: &Font, content: &Text, previous: &[String]) -> Vec<String> {
+    let mut lines: Vec<String> = previous.to_vec();
+    let shown = chat.displayed(content);
+    for line in font.wrap_components(&shown, chat.max_width()) {
+        lines.insert(0, line.plain());
+    }
+    lines.truncate(100);
+    lines
+}
+
+fn stored(chat: &Chat) -> Vec<String> {
+    chat.lines.iter().map(|l| l.content.plain()).collect()
+}
+
+#[test]
+fn a_long_message_keeps_the_newest_hundred_lines_newest_first() {
+    let font = font();
+    let mut chat = Chat::default();
+    // Enough two-glyph words to wrap past 100 lines: each line holds at most
+    // `max_width` glyphs, so `2 * max_width * 101` glyphs are at least 202 lines.
+    // The batched splice must then drop the older lines exactly as the loop's did.
+    let long = "a ".repeat(chat.max_width() as usize * 101);
+    let few = "abc ".repeat(chat.max_width() as usize / 2);
+    let mut expected: Vec<String> = Vec::new();
+    for text in ["first", &few, &long, "last", &long] {
+        let content = Text::literal(text);
+        expected = reference_lines(&chat, &font, &content, &expected);
+        chat.add_message(&font, content, None, ChatSource::Server, 0, false);
+        assert_eq!(stored(&chat), expected);
+        assert!(chat.lines.len() <= 100);
+    }
+    // The last message wrapped past the cap: the surviving list is only its
+    // newest 100 lines, newest first.
+    assert_eq!(stored(&chat).len(), 100);
+}
