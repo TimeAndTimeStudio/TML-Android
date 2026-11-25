@@ -326,6 +326,13 @@ self-contained performance change that applied to this tree:
   path; `can_use` becomes `option_usable`, which also rejects unknown keys so the separate
   `OPTIONS.contains` check goes. This fork has no mod system, so the `selector_tokens` lookup the
   commit also guards is not present to adapt.
+- `d9b8e7bef2` (partial) — the TrueType per-char `HashMap<char, GlyphId>` is replaced by a
+  compact canonical table (one `Option<char>` per glyph ID from `codepoint_ids()`) plus a sorted
+  override list for the rare multi-subtable case, and `TrueType::glyph_id` reads it; the
+  `resolve`/`provider_advance` call sites use `glyph_id`. The oversized-glyph-fallthrough half
+  of the same commit needs `metrics_only`/`fishy_advance`, absent here, so only the compact-table
+  half is ported. The exhaustive BMP lookup-equivalence test is adapted to this tree's
+  `load_true_type(root, def)`.
 - `fd3b4ff6a3` — a chunk decoder thread now calls `chunk_decoder_current` and stays at the
   ordinary priority below the frame, unless `HORIZON_DECODER_PRIORITY=1` asks for the old raise
   (a parsed-once switch, with a portable parse test and the Windows priority A/B). The
@@ -398,7 +405,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
 `150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
-`07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`.
+`07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half).
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -478,7 +485,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `c94d887bda` | partially absent | 22 | 18 | perf(entities): an armor stand nobody has borrowed mutably keeps its network entry (#19864) |
 | `f60fd796db` | partially absent | 6 | 4 | perf(far-terrain): limit far work to one job at a time through a world entry's first near load (#20457) |
 | `ee65f0d916` | partially absent | 3 | 2 | perf(far-terrain): summarize a near chunk when it leaves the near area, not when it arrives (#20455) |
-| `d9b8e7bef2` | partially absent | 2 | 1 | perf(font): compact canonical TrueType glyph-ID table with oversized glyph fallthrough (#20187) |
 | `755f7892ac` | partially absent | 6 | 5 | perf(game): the server's tick stops doing client work (#15437 Wave 0) (#18076) |
 | `d8f558197d` | partially absent | 6 | 2 | perf(gpu): +8.7% to +11.6% RD 32 FPS (+18.5% mountain 1% low) via conservative reversed-Z Hi-Z pyramid compute occlusion culling (#20194) |
 | `150cf23815` | partially absent | 4 | 1 | perf(graphics): pbrBudgetMiB sets the LabPBR maps' video memory apart from the block textures' (#18690) |
