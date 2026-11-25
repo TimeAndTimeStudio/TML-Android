@@ -100,9 +100,20 @@ where
     if mask.is_empty() {
         return Ok(());
     }
-    // Restoring the dirt under a carved cell used to build a fresh material
-    // worker, compile the whole surface rule and allocate its bindings for every
-    // cell. One worker now serves the pass; only the 1x1x1 bindings move.
+    // Most carved columns never expose dirt below grass/mycelium. When `shared`
+    // is already compiled and has no eager density bindings, defer constructing
+    // the per-cell top-material worker until an exposed dirt block actually
+    // needs repair.
+    //
+    // Deferring in that case cannot hide a rule-compile, noise-binding, or
+    // density-sampling error: `CompiledSurfaceRule` is only populated by
+    // `MaterialConditions::add_shared_rule` after `CompiledRule::compile`
+    // validates the rule and resolves every noise, and once populated
+    // `add_shared_rule` reuses the already-bound rule and noise handles
+    // directly without re-compiling `rule` or calling `bind_noise`. When
+    // `shared` is `None` or has eager density bindings, initialize the worker
+    // up front at `[0, 0, 0]` before any terrain write so invalid rules and
+    // eager origin sampling errors still fail before mutating the chunk.
     let TopMaterialInputs {
         generation,
         root,
@@ -110,17 +121,27 @@ where
         preliminary_surface,
         density_context,
     } = inputs;
-    let volume =
-        DensityVolume::new([1; 3], [0; 3], [1; 3]).map_err(|_| SurfaceError::InvalidVolume)?;
-    let sources = MaterialDensitySources::new(
-        surface,
-        volume,
-        preliminary_surface,
-        SamplerContext::default(),
-    )?;
-    let mut worker =
-        MaterialConditions::<R, _>::with_possible_biomes(generation, root, sources, None);
-    let rule = worker.add_shared_rule(rule, shared)?;
+    let defer_worker = shared
+        .as_ref()
+        .is_some_and(|compiled| !compiled.has_eager_density_bindings());
+    let mut top_worker = None;
+    let mut top_inputs = if defer_worker {
+        Some((generation, root, surface, preliminary_surface))
+    } else {
+        let volume =
+            DensityVolume::new([1; 3], [0; 3], [1; 3]).map_err(|_| SurfaceError::InvalidVolume)?;
+        let sources = MaterialDensitySources::new(
+            surface,
+            volume,
+            preliminary_surface,
+            SamplerContext::default(),
+        )?;
+        let mut worker =
+            MaterialConditions::<R, _>::with_possible_biomes(generation, root, sources, None);
+        let rule_id = worker.add_shared_rule(rule, shared)?;
+        top_worker = Some((worker, rule_id));
+        None
+    };
     let cx = chunk.position().x.wrapping_shl(4);
     let cz = chunk.position().z.wrapping_shl(4);
     for column in mask.columns() {
@@ -149,11 +170,34 @@ where
             let below = y.wrapping_sub(1);
             if found_surface && blocks.flags(chunk.block(x, below, z))? & 4 != 0 {
                 let submerged = chunk.block_properties(state).has_fluid();
-                worker.retarget_surface_densities([x, below, z])?;
+                let (worker, rule_id) = match &mut top_worker {
+                    Some((worker, rule_id)) => {
+                        worker.retarget_surface_densities([x, below, z])?;
+                        (worker, *rule_id)
+                    }
+                    None => {
+                        let (generation, root, surface, preliminary_surface) =
+                            top_inputs.take().expect("top material inputs");
+                        let volume = DensityVolume::new([1; 3], [x, below, z], [1; 3])
+                            .map_err(|_| SurfaceError::InvalidVolume)?;
+                        let sources = MaterialDensitySources::new(
+                            surface,
+                            volume,
+                            preliminary_surface,
+                            SamplerContext::default(),
+                        )?;
+                        let mut worker = MaterialConditions::<R, _>::with_possible_biomes(
+                            generation, root, sources, None,
+                        );
+                        let rule_id = worker.add_shared_rule(rule, shared)?;
+                        let (worker, rule_id) = top_worker.insert((worker, rule_id));
+                        (worker, *rule_id)
+                    }
+                };
                 let replacement = top_material_cell(
-                    &mut worker,
+                    worker,
                     chunk,
-                    rule,
+                    rule_id,
                     BlockPos::new(x, below, z),
                     submerged,
                 )?;

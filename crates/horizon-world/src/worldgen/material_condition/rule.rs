@@ -432,6 +432,18 @@ pub struct CompiledSurfaceRule<R: RandomSource> {
     rule: CompiledRule<R>,
     noises: Vec<((String, bool), Arc<dyn Noise>)>,
 }
+impl<R: RandomSource> CompiledSurfaceRule<R>
+where
+    R::Positional: Clone,
+{
+    /// Whether binding this compiled rule to a worker samples any density
+    /// eagerly. This tree tracks density binding without the eager/point
+    /// distinction, so any binding counts as eager (binding it compiles a
+    /// fresh rule against the chunk's volume rather than reusing the cache).
+    pub(crate) fn has_eager_density_bindings(&self) -> bool {
+        self.rule.binds_densities()
+    }
+}
 impl<R: RandomSource, S: MaterialSurfaceQueries> MaterialConditions<R, S>
 where
     R::Positional: Clone,
