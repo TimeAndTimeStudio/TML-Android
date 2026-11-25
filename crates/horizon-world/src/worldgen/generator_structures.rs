@@ -650,25 +650,62 @@ impl StructureState {
         chunk: ChunkPos,
     ) -> Vec<Arc<StructureStart>> {
         let (bx, bz) = (chunk.x * 16, chunk.z * 16);
-        let around: Vec<ChunkPos> = (chunk.x - 8..=chunk.x + 8)
-            .flat_map(|sx| (chunk.z - 8..=chunk.z + 8).map(move |sz| ChunkPos::new(sx, sz)))
-            .collect();
-        // Workers generating neighbouring chunks ask for the same starts in the
-        // same order: build those no other worker is building first, and wait
-        // for the others only then, rather than all queueing behind each one.
-        let found: Vec<Option<Starts>> = around
-            .iter()
-            .map(|&at| self.build_starts(context, at, false))
-            .collect();
         let mut out = Vec::new();
-        for (&at, found) in around.iter().zip(found) {
-            let starts = found.unwrap_or_else(|| self.starts_at(context, at));
-            for start in starts.iter() {
+        let push_intersecting = |out: &mut Vec<Arc<StructureStart>>,
+                                 starts: &[Arc<StructureStart>]| {
+            for start in starts {
                 let b = start.bounding_box;
                 if b.max[0] >= bx && b.min[0] <= bx + 15 && b.max[2] >= bz && b.min[2] <= bz + 15 {
                     out.push(start.clone());
                 }
             }
+        };
+        // Workers generating neighbouring chunks ask for the same starts in the
+        // same order: build those no other worker is building first, and wait
+        // for the others only then, rather than all queueing behind each one.
+        let mut busy = [ChunkPos::new(0, 0); 289];
+        let mut busy_count = 0usize;
+        let mut deferred: [Option<Starts>; 289] = [const { None }; 289];
+        let mut idx = 0usize;
+        for sx in chunk.x - 8..=chunk.x + 8 {
+            for sz in chunk.z - 8..=chunk.z + 8 {
+                let at = ChunkPos::new(sx, sz);
+                match self.build_starts(context, at, false) {
+                    Some(starts) if !starts.is_empty() => {
+                        if busy_count == 0 {
+                            push_intersecting(&mut out, starts.as_slice());
+                        } else {
+                            deferred[idx] = Some(starts);
+                        }
+                    }
+                    Some(_) => {}
+                    None => {
+                        busy[busy_count] = at;
+                        busy_count += 1;
+                    }
+                }
+                idx += 1;
+            }
+        }
+        if busy_count > 0 {
+            let mut bi = 0usize;
+            let mut slot_idx = 0usize;
+            for sx in chunk.x - 8..=chunk.x + 8 {
+                for sz in chunk.z - 8..=chunk.z + 8 {
+                    let at = ChunkPos::new(sx, sz);
+                    if bi < busy_count && busy[bi] == at {
+                        bi += 1;
+                        let starts = self.starts_at(context, at);
+                        push_intersecting(&mut out, starts.as_slice());
+                    } else if let Some(starts) = deferred[slot_idx].take() {
+                        push_intersecting(&mut out, starts.as_slice());
+                    }
+                    slot_idx += 1;
+                }
+            }
+        }
+        if out.len() <= 1 {
+            return out;
         }
         // Vanilla keeps each structure's references in a LongOpenHashSet and
         // places the starts in its iteration order; reorder each structure's
@@ -847,4 +884,5 @@ mod tests {
             );
         }
     }
+
 }
