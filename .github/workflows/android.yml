@@ -50,7 +50,7 @@ jobs:
           shared-key: android-${{ matrix.abi }}
       - name: Build TML APK (ARM64 Only)
         run: |
-          python3 packaging/android/build_apk.py --abi ${{ matrix.abi }} --profile quick
+          python3 packaging/android/build_apk.py --abi ${{ matrix.abi }} --profile fast
       - uses: actions/upload-artifact@v4
         with:
           name: tml-apk-${{ matrix.abi }}

@@ -396,6 +396,19 @@ self-contained performance change that applied to this tree:
   tree's per-column `body_with` (upstream's `bodies_with` batch is absent) and its bulk
   block-change path, which also warms, so it sets the flag and clears afterwards too. Upstream's
   hub test uses an absent `cache_census` and is dropped; the `chunks.rs` test is ported.
+- `533bb2cdd3` — bit-exact noise fast paths. `SimplexNoise` keeps a doubled permutation table
+  and a `perm % 12` table (no inner `& 255`, no remainder). `PerlinNoise` keeps `perm` (257
+  entries, index 256 mirrors 0), `perm_grad` (`perm & 15`) and, for `y == 0`, precomputed X-to-Y
+  permutation tables plus the gradient's Y term times `dy`, so `get2` and the `y == 0` `get3`
+  sample one fixed cell; `cell_grads`/`sample_fast` replace four `permute` calls per corner.
+  `NoiseStack` downcasts homogeneous layers through `Any` and shares the same `Arc`s, so
+  perlin/smeared/simplex stacks call the concrete methods instead of `Arc<dyn Noise>`; mixed or
+  wrapped stacks keep the dynamic path. Adapted to this tree: it has no
+  `add_to_needed`/`needed` mask, so the fast-layer volume loop keeps `add_to_volume` only, and
+  `get2_f64`/`get3_f64` are added where this tree lacked them. The pre-change scalar
+  implementations are kept under `cfg(test) mod reference` and compared bit-for-bit across the
+  256 wrap, `y == 0`, `-0.0` and Far-Lands coordinates; this tree's vanilla seed and
+  batched-volume tests still pass. `GradientTable::permute`/`gradient` are removed (unused).
 - `fba8c0452c` — `HudBatch::clip_since` cuts quads where they are (kept quads move down with
   `copy_within`, a cut one writes over its own slots, only a growing cut moves the unread rest)
   through a `clip_quad` helper, instead of cloning every quad out and putting each part back.
@@ -437,7 +450,7 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `12cd1ed563` | density | `IntervalSelectSampler` duplicate threshold scans | LerpSampler half ported; the IntervalSelect half needs the `needed`-mask sampler refactor, absent here |
 | `51670062e1` | 1.61x scalar | flat `SplineSampler` arena | needs `sample_with`/`usable_mask`, absent here |
 | `ebb6ee7a8a` | server | share encoded chunk bodies | needs `Body::Shared`/`Encoder::bodies_with`, absent here |
-| `3fa98d1bd8`, `f71ddcce2d`, `533bb2cdd3`, `ad406095d4`, `dedb0375a4` | font/noise/particles/sprites | large multi-region rewrites | diverge from this tree's older forms, deferred |
+| `3fa98d1bd8`, `f71ddcce2d`, `ad406095d4`, `dedb0375a4` | font/particles/sprites | large multi-region rewrites | diverge from this tree's older forms, deferred |
 | `e0c1233a27` | -22..-33 MB | zero-alloc `EntityBatch` LUT + Schwartzian sort | needs the 16-material/native-terrain overlay refactor; this tree's `entity_batch.rs` is the older 10-material, 400-line form |
 | `d939fd378d` | +2.5..3.3% RD | faster `ChunkMap` lookups | needs the toroidal-grid/hash refactor in `world.rs`/`chunk_map.rs`, absent here |
 | `8e0b8ff5a5` | +1.1..4.3% RD16 | caching lightmap and skipping unchanged per-frame GPU uploads | lightmap `LightmapKey` cache, the hand/crosshair global-upload skip and the sunrise-fan skip are ported (see the list above); the sprite tick cache and the remaining per-frame upload skip still need this tree's older `gfx.rs` (488 lines, 8 conflict regions) |
@@ -459,7 +472,7 @@ Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
 `e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`, `15824fc6f3` (with prerequisite
-`24dcd97129`), `8af680316d` (partial), `616c4fec2c`, `fba8c0452c`.
+`24dcd97129`), `8af680316d` (partial), `616c4fec2c`, `fba8c0452c`, `533bb2cdd3`.
 
 ### Every remaining upstream perf commit and why it is deferred
 
@@ -479,7 +492,6 @@ the complete accounting. (`ab44288662` and `e349aeccea` are already present in `
 | `96d758bf25` | api/semantics | 1 | 0 | perf(chunks): build mesh jobs before taking the job queue's lock (#19870) |
 | `f71ddcce2d` | api/semantics | 1 | 0 | perf(font): LZ4-compressed chunked off-atlas bitmap font strips (#20186) |
 | `3fa98d1bd8` | api/semantics | 1 | 0 | perf(font): compact Unihex HexTable and shared archive cache (~7.4 MB less RAM per table) (#20185) |
-| `533bb2cdd3` | api/semantics | 4 | 0 | perf(noise): -4.6% worldgen proto wall time via bit-exact Perlin/Simplex/NoiseStack fast paths (#19536) |
 | `e08d2e53a5` | api/semantics | 3 | 0 | perf(oit): coalesce OIT terrain/feature render passes, skip empty features, and unroll 3-level Haar wavelets (#20202) |
 | `8e0b8ff5a5` | api/semantics | 2 | 0 | perf(render): +1.1% to +4.3% FPS (+9.5% 1% lows) by caching lightmap and skipping unchanged per-frame GPU uploads (#19513) |
 | `0f0dea6114` | api/semantics | 1 | 0 | perf(render): +1.4% to +2.0% FPS and -56 MB mountain RSS via section-level mesh budgeting and calm-frame guards (#19527) |
