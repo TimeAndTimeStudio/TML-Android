@@ -284,6 +284,13 @@ self-contained performance change that applied to this tree:
   exposed dirt needs repair, when the shared rule has no eager density bindings. Adapted
   `has_eager_density_bindings` to this tree's `CompiledRule::binds_densities` (no eager/point
   distinction here); the upstream test modules that need absent sampler APIs are left out.
+- `a03f108dbc` — `Chat::add_lines` wraps a message into a capped `VecDeque` and splices the
+  survivors in front once, instead of inserting every line at index 0 and shifting the whole list
+  per line; the scroll length uses the uncapped running count so focused scrolling matches the old
+  list length (`Chat::scroll_by` split into `scroll_by_len`). Adapted to this tree's `Line` (no
+  `message` field); the upstream test's `Message::wrapped` assertions are replaced by an
+  equivalence test against the old prepend-then-truncate reference (passes with the other 22 chat
+  tests).
 
 Already present in this tree (verified by their code being in `HEAD`): `ab44288662` (cloud
 `CloudMask` rebuild) and most of `e349aeccea` (packed light BFS; only upstream's later
@@ -314,7 +321,6 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `46e0a6942e` | memory | share one structure-mob data read per world | `StructureMobFinalizer` here has no `item_data` field (later upstream refactor) |
 | `ebb6ee7a8a` | server | share encoded chunk bodies | needs `Body::Shared`/`Encoder::bodies_with`, absent here |
 | `9609bc8ccf` | command | borrow unquoted selector option keys | needs mod `selector_tokens` (the mod system is removed in this fork) |
-| `a03f108dbc` | ui | a long chat message adds only the lines that stay | needs `Line.message`/`GuiMessage::message_text`, absent here |
 | `f43817376a` | -13..-25 MB | bucketed `Uploads` staging ring | 200-line rewrite of `gfx/upload.rs`, deferred |
 | `3fa98d1bd8`, `f71ddcce2d`, `533bb2cdd3`, `ad406095d4`, `dedb0375a4` | font/noise/particles/sprites | large multi-region rewrites | diverge from this tree's older forms, deferred |
 | `e0c1233a27` | -22..-33 MB | zero-alloc `EntityBatch` LUT + Schwartzian sort | needs the 16-material/native-terrain overlay refactor; this tree's `entity_batch.rs` is the older 10-material, 400-line form |
@@ -329,7 +335,7 @@ gap without porting the intermediate commit first. The prerequisite is named for
 Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`, `5db9bc3f45`,
 `d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
-`150a1013d2`, `635586ce1b`.
+`150a1013d2`, `635586ce1b`, `a03f108dbc`.
 
 The remaining upstream perf commits from the Nov 20-24 window are ~130; the ones not in this
 table all modify files this tree never had (the Nov 23-24 gameplay/render reorganisation), so
