@@ -193,6 +193,30 @@ fn usable_mask(needed: &[u64], volume: DensityVolume) -> Option<&[u64]> {
     let [size_x, size_y, size_z] = volume.sizes();
     (size_y <= 64 && needed.len() >= size_x * size_z).then_some(needed)
 }
+/// The Ys of each column (one bit per Y, if at most 64) a caller that needs `needed` (all of
+/// them without a mask) reads from a sampler it consults only where `reads(values[index])`.
+fn needed_where(
+    values: &[f32],
+    volume: DensityVolume,
+    needed: Option<&[u64]>,
+    reads: impl Fn(f32) -> bool,
+) -> Option<Vec<u64>> {
+    let size_y = volume.sizes()[1];
+    if size_y > 64 {
+        return None;
+    }
+    let columns = values[..volume.size()].chunks_exact(size_y);
+    Some(
+        columns
+            .enumerate()
+            .map(|(column, values)| {
+                let read = (values.iter().enumerate())
+                    .fold(0, |bits, (y, &value)| bits | u64::from(reads(value)) << y);
+                read & needed.map_or(u64::MAX, |needed| needed[column])
+            })
+            .collect(),
+    )
+}
 fn check_buffer(buffer: &[f32], volume: DensityVolume) -> Result<(), SampleError> {
     if buffer.len() < volume.size() {
         Err(DensityError::BufferTooShort.into())

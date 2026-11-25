@@ -291,10 +291,17 @@ self-contained performance change that applied to this tree:
   `message` field); the upstream test's `Message::wrapped` assertions are replaced by an
   equivalence test against the old prepend-then-truncate reference (passes with the other 22 chat
   tests).
-- `12cd1ed563` (partial) — `LerpSampler::sample_volume` hoists the `Values` enum dispatch out of
-  the per-cell loop (one match per volume, four constant/buffer combinations). The
-  `IntervalSelectSampler` half of the commit (classify each cell once, folding the needed-mask
-  pass) needs the sampler `needed`-mask refactor this tree does not have, so it is left out.
+- `12cd1ed563` — `LerpSampler::sample_volume` hoists the `Values` enum dispatch out of
+  the per-cell loop (one match per volume, four constant/buffer combinations), and
+  `IntervalSelectSampler` classifies every cell's branch once in `classify` (at most 256
+  branches; the selected index kept in a stack array up to 4096 cells) while building the
+  per-branch needed masks in the same pass, so the gather no longer rescans thresholds.
+  `RangeChoiceSampler` and `LerpSampler` also gained their needed-mask paths
+  (`sample_choice`/`sample_lerp` with `needed_where`), and `RangeChoiceSampler::choose`
+  does the conditional store with a bit mask so it vectorizes (it was a branch per value).
+  Adapted to this tree: the sampler `needed`-mask refactor landed with this port
+  (`sample_needed`, `sample_with`, `usable_mask`, `needed_where` in `density/mod.rs`), so
+  the whole file is upstream's post-image; there is no TML-only code in it.
 - `46e0a6942e` — a world's dimensions share one read of the structure mob data. The finalizers of
   one root take the same `Arc<OnceLock<Option<Data>>>` from a `Weak` registry (retained only while
   a finalizer holds it), so the overworld and the Nether read the files once instead of once each.
@@ -486,7 +493,6 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `8c27fbd2a0` | +2.0..3.8% RD32 | O(1) calm-frame LOD uploads, COW dispatch snapshots | modifies `gfx/world_handover.rs`, absent here; 1405 lines against a diverged `lod.rs`/`mesher.rs` |
 | `e8618f82ba` | +6.0..10.0% | `ChunkMap` toroidal cache kept hot | the toroidal grid came from an earlier absent commit; `chunk_map.rs` here is 385 lines against 1165 pre-image |
 | `d8f558197d` | +8.7..11.6% RD32 | conservative reversed-Z Hi-Z pyramid occlusion culling | adds `gfx/gpu_culling.rs` and `gfx/gpu_occlusion.wgsl`, absent here |
-| `12cd1ed563` | density | `IntervalSelectSampler` duplicate threshold scans | LerpSampler half ported; the IntervalSelect half needs the `needed`-mask sampler refactor, absent here |
 | `ebb6ee7a8a` | server | share encoded chunk bodies | needs `Body::Shared`/`Encoder::bodies_with`, absent here: this tree's `Body` is `Level(usize)`/`Saved(Arc<[u8]>)` and `send_many` takes owned `Vec<u8>`, so the sharing would need the owned-vs-shared send body first |
 | `3fa98d1bd8`, `f71ddcce2d` | font | large multi-region rewrites | diverge from this tree's older forms, deferred |
 | `dedb0375a4` | sprites | streaming sprite/CTM layout | `sprites.rs` here is 1319 lines against a 2349-line pre-image; 23 of its 25 hunks reject, so it needs the absent png/animation-layout refactor first |
@@ -508,7 +514,7 @@ gap without porting the intermediate commit first. The prerequisite is named for
 Ported and listed above: `326d390035`, `0a4fe8c212`, `5c5e6b1651`, `b17d429e33`, `5db9bc3f45`,
 `d41da14ca2`, `1fd5f925a8`, `55aa15efeb`, `6dbd04fc1a`, `64baac04dd`, `3c678f8923`, `8060e1ff24`,
 `b6562f83a8`, `bc6bc483a8`, `7cc881c0e3`, `19c9350647`, `576b17b8a9`, `7f693e21b4`, `746f280e8e`,
-`150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563` (LerpSampler half), `46e0a6942e`,
+`150a1013d2`, `635586ce1b`, `a03f108dbc`, `12cd1ed563`, `46e0a6942e`,
 `c415b158fe`, `92abe36aec`, `4ac255c284`, `fdf87ca16d`, `ec0648aba7`, `debef4584c`,
 `07147ef4af`, `1bde596b8d`, `fd3b4ff6a3`, `9609bc8ccf`, `d9b8e7bef2` (compact table half),
 `e0bbdc1e25`, `92d8bf33e1`, `8197ba2363`, `dd3ed413f2`, `15824fc6f3` (with prerequisite
