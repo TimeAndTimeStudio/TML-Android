@@ -12,3 +12,10 @@ pub(crate) fn instance() -> wgpu::Instance {
     }
     wgpu::Instance::new(descriptor.with_env())
 }
+
+/// Serialises tests that make and drive their own device: some drivers cannot
+/// take two devices built at once from different test threads.
+pub(crate) fn lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}

@@ -2823,7 +2823,8 @@ impl Renderer {
                         // The extra layers are empty.
                         let layer_bytes = data.len() / layers as usize;
                         data.resize(layer_bytes * count as usize, 0);
-                        device.create_texture_with_data(
+                        upload::create_texture_with_data(
+                            &device,
                             &queue,
                             &wgpu::TextureDescriptor {
                                 label: Some(label),
@@ -2839,7 +2840,6 @@ impl Renderer {
                                 usage: wgpu::TextureUsages::TEXTURE_BINDING,
                                 view_formats: &[],
                             },
-                            wgpu::util::TextureDataOrder::LayerMajor,
                             &data,
                         )
                     },
@@ -2856,7 +2856,8 @@ impl Renderer {
                 // The extra layers are empty.
                 mips.resize(mips.len() / used as usize * count as usize, 0);
                 mip_levels = levels;
-                device.create_texture_with_data(
+                upload::create_texture_with_data(
+                    &device,
                     &queue,
                     &wgpu::TextureDescriptor {
                         label: Some("Block sprites"),
@@ -2876,7 +2877,6 @@ impl Renderer {
                             | wgpu::TextureUsages::STORAGE_BINDING,
                         view_formats: &[],
                     },
-                    wgpu::util::TextureDataOrder::LayerMajor,
                     &mips,
                 )
             })
@@ -2999,7 +2999,8 @@ impl Renderer {
             )
             .into());
         }
-        let atlas = device.create_texture_with_data(
+        let atlas = upload::create_texture_with_data(
+            &device,
             &queue,
             &wgpu::TextureDescriptor {
                 label: Some("Shared atlas"),
@@ -3018,7 +3019,6 @@ impl Renderer {
                     | wgpu::TextureUsages::COPY_SRC,
                 view_formats: &[],
             },
-            wgpu::util::TextureDataOrder::LayerMajor,
             atlas_pixels,
         );
         let atlas_view = atlas.create_view(&Default::default());

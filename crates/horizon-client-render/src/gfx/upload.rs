@@ -313,6 +313,99 @@ impl Uploads {
     }
 }
 
+/// About how much one band stages; a large upload holds at most about two.
+const BAND: usize = 8 << 20;
+
+/// `device.create_texture_with_data(queue, desc, LayerMajor, data)`, staged a
+/// band at a time: each band is submitted, and the one before waited for, so
+/// its staging buffer is freed before the next is written. `wgpu`'s own
+/// version stages every byte at once, so the shared atlas (112 MiB on a phone)
+/// stood twice in memory while it loaded (#15608).
+pub(crate) fn create_texture_with_data(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    desc: &wgpu::TextureDescriptor<'_>,
+    data: &[u8],
+) -> wgpu::Texture {
+    create_banded(device, queue, desc, data, BAND)
+}
+
+fn create_banded(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    desc: &wgpu::TextureDescriptor<'_>,
+    data: &[u8],
+    band: usize,
+) -> wgpu::Texture {
+    use wgpu::util::DeviceExt as _;
+    let block = desc.format.block_copy_size(None).unwrap_or(0) as usize;
+    if data.len() <= band
+        || block == 0
+        || desc.format.block_dimensions() != (1, 1)
+        || desc.dimension != wgpu::TextureDimension::D2
+    {
+        return device.create_texture_with_data(
+            queue,
+            desc,
+            wgpu::util::TextureDataOrder::LayerMajor,
+            data,
+        );
+    }
+    let mut desc = desc.clone();
+    desc.usage |= wgpu::TextureUsages::COPY_DST;
+    let texture = device.create_texture(&desc);
+    let (mut offset, mut staged, mut previous) = (0, 0, None);
+    // The order `create_texture_with_data` reads `LayerMajor` data in.
+    for layer in 0..desc.array_layer_count() {
+        for mip in 0..desc.mip_level_count {
+            let Some(size) = desc.mip_level_size(mip) else {
+                continue;
+            };
+            let row = size.width as usize * block;
+            let rows_per_band = (band / row).clamp(1, size.height as usize) as u32;
+            let mut y = 0;
+            while y < size.height {
+                let rows = rows_per_band.min(size.height - y);
+                let bytes = row * rows as usize;
+                let Some(texels) = data.get(offset..offset + bytes) else {
+                    return texture;
+                };
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &texture,
+                        mip_level: mip,
+                        origin: wgpu::Origin3d { x: 0, y, z: layer },
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    texels,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(row as u32),
+                        rows_per_image: Some(rows),
+                    },
+                    wgpu::Extent3d {
+                        width: size.width,
+                        height: rows,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                (offset, staged, y) = (offset + bytes, staged + bytes, y + rows);
+                if staged >= band {
+                    let index = queue.submit([]);
+                    if let Some(earlier) = previous.replace(index) {
+                        let _ = device.poll(wgpu::PollType::Wait {
+                            submission_index: Some(earlier),
+                            timeout: None,
+                        });
+                    }
+                    staged = 0;
+                }
+            }
+        }
+    }
+    texture
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

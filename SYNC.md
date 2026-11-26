@@ -103,6 +103,11 @@ common ancestor to merge from. Stable upstream changes that matter to phones are
   layer that has just come into view, and a title frame marks every layer done. The commit's
   `has_modes` guard is omitted (this tree has no Polytone `mode`s), and its HUD-sprite skip is
   moot: `HudRenderer::sprite_animations` has no producer here.
+- `eafbd601ff` — the shared atlas (112 MiB on a phone), the block-sprite arrays, the LabPBR maps
+  and the title panorama are staged a band (8 MiB) at a time, so `wgpu`'s
+  `create_texture_with_data` no longer holds every byte twice while they load (#15608). This tree
+  never had the helper; `gfx::test_gpu::lock`, which its tests use, is added with it, so
+  `gfx/upload.rs`'s test module compiles and runs again.
 - Java removed from the app: no runtime download, no on-phone preparation, no exporter bundle
   or `java`/`javac` launchers in the APK. The first-run screen imports the `resources` folder
   prepared on a computer (zipped) and keeps sign-in/offline; nothing is fetched from Mojang.

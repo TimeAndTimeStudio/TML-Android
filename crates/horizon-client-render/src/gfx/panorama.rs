@@ -389,7 +389,8 @@ impl Panorama {
     fn cube(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::BindGroup {
         let (side, pixels) =
             reduced_texels(self.faces.size, self.faces.texels(), self.maximum_side);
-        let texture = device.create_texture_with_data(
+        let texture = super::upload::create_texture_with_data(
+            device,
             queue,
             &wgpu::TextureDescriptor {
                 label: Some("Title panorama cube"),
@@ -405,7 +406,6 @@ impl Panorama {
                 usage: wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             },
-            wgpu::util::TextureDataOrder::LayerMajor,
             &pixels,
         );
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
