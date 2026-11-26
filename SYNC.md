@@ -64,9 +64,10 @@ the merge.
   25 s, runs for 10 s, and keeps the pair only when the frame time held within
   2%; `min_sections`/`min_share` on Android are 96 and `MIN_SHARE` (0.1) again
   (`Renderer::occlusion_stats` stays, for the trial's log).
-- Ship the APK from a `ship` profile (release's cross-crate thin LTO, 16 codegen
-  units, `incremental = false`) instead of `fast`, which leaves cross-crate
-  inlining between the game crates on the table on every frame.
+- Ship the APK from a `ship` profile (release's cross-crate thin LTO and single
+  codegen unit per crate, `incremental = false`) instead of `fast`, which
+  leaves cross-crate inlining between the game crates on the table on every
+  frame.
 
 ## Ported after the squash (2026-11-23)
 
