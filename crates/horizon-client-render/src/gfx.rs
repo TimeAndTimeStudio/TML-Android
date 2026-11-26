@@ -4132,9 +4132,6 @@ impl Renderer {
                     } else {
                         0
                     };
-                    if cfg!(target_os = "android") {
-                        cull.min_share = cull::PHONE_MIN_HIDDEN_SHARE;
-                    }
                 }
                 cull
             });

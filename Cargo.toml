@@ -98,6 +98,16 @@ lto = false
 codegen-units = 16
 incremental = true
 
+# The shipped APK (`.github/workflows/android.yml`): release's own cross-crate thin LTO, with 16
+# codegen units per crate so a CI build stays well inside the runner's budget. The frame loop
+# spans horizon-client, horizon-client-render, horizon-world and horizon-core, and `fast` leaves
+# the cross-crate inlining between them on the table; CI builds from scratch, so incremental is
+# off (its split can also hold some optimization back). Measure with fast, ship with ship.
+[profile.ship]
+inherits = "release"
+codegen-units = 16
+incremental = false
+
 # The Android APK's iteration builds (packaging/android/build_apk.py): fast's optimization, with
 # incremental compilation's own split, so an edit re-optimizes only the parts it touched
 # (codegen-units 16 re-optimized a sixteenth of the game for any change). Measure with fast.

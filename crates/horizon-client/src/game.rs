@@ -23247,11 +23247,9 @@ impl Game<'_> {
             if renderer.multi_draw {
                 return;
             }
-            // Long enough for the world to load and the frame time to settle, short enough
-            // that a phone is culling within the first few seconds rather than after 25.
             let at = *self
                 .draws_trial_at
-                .get_or_insert(now + Duration::from_secs(5));
+                .get_or_insert(now + Duration::from_secs(25));
             if now < at {
                 return;
             }
@@ -23277,19 +23275,22 @@ impl Game<'_> {
             );
             return;
         };
-        if now.duration_since(started) < Duration::from_secs(12) {
+        if now.duration_since(started) < Duration::from_secs(10) {
             return;
         }
-        // Keep it when the frame time holds (vsync often hides a gain entirely) or when the
-        // culling is actually hiding a useful share of the frame's solid indices.
+        // Keep it only when the frame time actually held. Android's baseline is a call a section,
+        // which `indirect_draws_wanted` measured faster than indirect multi-draws on Adreno, so
+        // the pair has to earn its keep; a share of hidden indices is not enough, because the
+        // read-back test and the second pass cost GPU time of their own that a phone's tiled GPU
+        // pays badly.
         let hidden = renderer.occlusion_stats().map_or(0.0, |(_, share)| share);
-        let keep = ms <= self.draws_trial_baseline * 1.03 || hidden >= 0.06;
+        let keep = ms <= self.draws_trial_baseline * 1.02;
         if !keep {
             renderer.set_indirect_draws(false);
         }
         log::info!(
             "Horizon renderer: {} ({:.1} ms a frame before, {ms:.1} ms in the trial, {:.0}% of \
-             solid indices heeded)",
+             solid indices hidden)",
             if keep {
                 "kept indirect multi-draws with occlusion culling"
             } else {

@@ -53,6 +53,20 @@ the merge.
   the `ShaderOptions` arm; the possible commit (`player_pack_ids`), the
   skin-name commit, the canvas save and the custom-send commit come back
   with them. Tests: `leaving_the_pack_page_commits_the_selection` added.
+- Fix the frame rate drop: `b6388cf2b8` had made the GPU-culling trial aggressive
+  — it ran from 5 s and kept indirect multi-draws with occlusion culling when
+  the read-back hid as little as 6% of the solid indices, even when the frame
+  time got worse; and it lowered the Android test bar (`PHONE_MIN_SECTIONS`
+  96 -> 64, a `PHONE_MIN_HIDDEN_SHARE` of 0.06). On Android the baseline is a
+  call a section, which `indirect_draws_wanted` measured faster than indirect
+  multi-draws, so keeping the pair on a hidden share alone left most phones on
+  the slower path. The trial is back to the platform's own gate: it starts after
+  25 s, runs for 10 s, and keeps the pair only when the frame time held within
+  2%; `min_sections`/`min_share` on Android are 96 and `MIN_SHARE` (0.1) again
+  (`Renderer::occlusion_stats` stays, for the trial's log).
+- Ship the APK from a `ship` profile (release's cross-crate thin LTO, 16 codegen
+  units, `incremental = false`) instead of `fast`, which leaves cross-crate
+  inlining between the game crates on the table on every frame.
 
 ## Ported after the squash (2026-11-23)
 
