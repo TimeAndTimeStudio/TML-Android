@@ -109,6 +109,13 @@ common ancestor to merge from. Stable upstream changes that matter to phones are
   `create_texture_with_data` no longer holds every byte twice while they load (#15608). This tree
   never had the helper; `gfx::test_gpu::lock`, which its tests use, is added with it, so
   `gfx/upload.rs`'s test module compiles and runs again.
+- `5cbec47ee2` (part) — `name_tags` returns before the mob scan, the vehicle scan and the
+  crosshair raycast when nothing in the frame can carry a tag (no named mob, mannequin, other
+  player, own tag, named armor stand, item frame or server-sent name); `other_players` also
+  stops at an empty player list and sizes its result. The rest of the commit (per-entity
+  render-prep scratch across `mobs/render.rs` and 20 other files) is deferred: it needs the
+  later renderer's signatures. This tree's `remote_name_tags` (server-sent custom names) has no
+  term upstream's guard covers, so any queued name keeps the full path.
 - Java removed from the app: no runtime download, no on-phone preparation, no exporter bundle
   or `java`/`javac` launchers in the APK. The first-run screen imports the `resources` folder
   prepared on a computer (zipped) and keeps sign-in/offline; nothing is fetched from Mojang.

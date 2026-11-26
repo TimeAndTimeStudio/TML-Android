@@ -63,8 +63,12 @@ impl Game<'_> {
     }
     /// The other players' models and names: the players a server sends.
     fn other_players(&self) -> Vec<(&Mob, String)> {
-        let mut out = Vec::new();
-        for (id, name) in self.remote_player_names() {
+        let remote_players = self.remote_player_names();
+        if remote_players.is_empty() {
+            return Vec::new();
+        }
+        let mut out = Vec::with_capacity(remote_players.len());
+        for (id, name) in remote_players {
             if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
                 out.push((m, name));
             }
@@ -104,10 +108,38 @@ impl Game<'_> {
     /// Each name tag this frame.
     fn name_tags(&self, camera: glam::DVec3, alpha: f64) -> Vec<NameTag> {
         let hooks = !mod_api::mods().is_empty();
+        let players = self.other_players();
+        let own = self.own_name_tag();
+        // Nothing to name this frame: skip the mob scan, the vehicle scan and
+        // the raycasts below. Most frames in single player have no named mob,
+        // no other player and no own tag, and the crosshair pick is not free.
+        let has_mob_candidates = hooks
+            || !players.is_empty()
+            || own.is_some()
+            || self.mobs.iter().any(|m| {
+                m.custom_name.is_some() || m.species() == horizon_client::mobs::Species::Mannequin
+            });
+        let has_stand_candidates = hooks
+            || self
+                .armor_stands
+                .iter()
+                .any(|a| a.custom_name.is_some() && a.name_visible);
+        let has_frame_candidates = hooks || (!self.ui.hide_gui && !self.item_frames.is_empty());
+        // This tree still appends the server's own custom names for entities
+        // (`remote_name_tags`); upstream had dropped that by the ported commit,
+        // so its guard has no term for it. Keep the full path whenever any are
+        // queued, rather than drop a server-sent name.
+        let has_remote_names = self.remote.as_ref().is_some_and(|r| !r.names.is_empty());
+        if !has_mob_candidates
+            && !has_stand_candidates
+            && !has_frame_candidates
+            && !has_remote_names
+        {
+            return Vec::new();
+        }
         let target = self.mob_hit().map(|(i, _)| self.mobs[i].id);
         let viewer = self.player_team();
         let mut tags = Vec::new();
-        let players = self.other_players();
         let player_ids = hooks.then(|| {
             players
                 .iter()
@@ -133,7 +165,7 @@ impl Game<'_> {
         });
         let players = players
             .into_iter()
-            .chain(self.own_name_tag())
+            .chain(own)
             .map(|(m, name)| (m, name, true));
         // Who is riding whom: asked once per tag below, and rescanning every mob
         // for each tag made this quadratic in the number of loaded mobs.
