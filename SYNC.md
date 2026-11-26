@@ -42,6 +42,18 @@ Nothing ran on a phone. On the VM the client ran without mods and without a shad
 shader packs, touch, custom buttons, the setup download and native mods builds were not run after
 the merge.
 
+## TML fixes after the merge (not upstream)
+
+- Fix the resource pack screen's Done/Escape: the shader-pack removal
+  (`4b93505cc7`) gutted `OptionsUi::back`'s `match page` block, so leaving
+  the page never ran `PackSelectionModel.commit`. The bundled `TML.zip`
+  (turned on once by `preparer::put_tml_ui_pack`) therefore could not be
+  turned off. Restored the `Language`, `Packs` (commit), `Skin`,
+  `CustomDraw` and `CustomButton` arms from the pre-removal source, minus
+  the `ShaderOptions` arm; the possible commit (`player_pack_ids`), the
+  skin-name commit, the canvas save and the custom-send commit come back
+  with them. Tests: `leaving_the_pack_page_commits_the_selection` added.
+
 ## Ported after the squash (2026-11-23)
 
 The fork's history is a single squashed root (`1beb91ea75`), so `git merge upstream/main` has no

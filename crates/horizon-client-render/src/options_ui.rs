@@ -6092,6 +6092,74 @@ impl OptionsUi {
         self.settings_search.focused = false;
         self.language_search.focused = false;
         self.can_change_value = false;
+        match page {
+            Page::Language => {
+                if let Some(code) = self.language_choice.take()
+                    && code != s.language
+                {
+                    s.language = code.clone();
+                    events.push(Event::Language(code));
+                }
+            }
+            Page::Packs => {
+                // PackSelectionScreen.onClose: PackSelectionModel.commit.
+                let data = self.data_pack_dir.take();
+                if let Some(p) = self.pack_screen.take()
+                    && p.changed
+                {
+                    let ids = p.commit();
+                    if data.is_some() {
+                        events.push(Event::DataPacks(ids));
+                    } else {
+                        // `PackSelectionModel.commit` already drops `server/...`
+                        // ids; keep the same filter if the screen is rebuilt.
+                        let ids = crate::packs::player_pack_ids(ids);
+                        s.resource_packs = ids.clone();
+                        self.pack_selection = ids.clone();
+                        events.push(Event::Packs(ids));
+                    }
+                }
+            }
+            // Done or Escape with the name box focused keeps what it holds, as leaving it does.
+            Page::Skin if self.profile_name.is_none() && self.skin.name.focused => {
+                self.commit_name()
+            }
+            // Done keeps a canvas that changed: the file, the atlas's slot, and the button's look.
+            Page::CustomDraw(id) => {
+                if std::mem::take(&mut self.painter.dirty) {
+                    let pixels = self.painter.pixels.clone();
+                    self.painter.upload = Some((id, pixels.clone()));
+                    if let Some(b) = s.custom_buttons.iter_mut().find(|b| b.id == id) {
+                        b.image = true;
+                        b.icon = None;
+                    }
+                    // Its pressed image: a canvas cleared takes it away.
+                    if let Some(b) = s
+                        .custom_buttons
+                        .iter_mut()
+                        .find(|b| own_buttons::pressed_slot(b.id) == id)
+                    {
+                        b.pressed = pixels.chunks(4).any(|p| p[3] != 0);
+                    }
+                    events.push(Event::CustomImage(id, pixels));
+                }
+            }
+            // What the box holds is what it sends; one that does nothing goes.
+            Page::CustomButton(id) => {
+                let line = self.custom_send.value.trim().to_owned();
+                self.custom_send.focused = false;
+                if let Some(b) = s.custom_buttons.iter_mut().find(|b| b.id == id)
+                    && (!line.is_empty()
+                        || matches!(b.action, crate::settings::CustomAction::Send(_)))
+                {
+                    b.action = crate::settings::CustomAction::Send(line);
+                }
+                s.custom_buttons
+                    .retain(|b| b.action != crate::settings::CustomAction::Send(String::new()));
+                events.push(Event::CustomButtons);
+            }
+            _ => {}
+        }
         events.push(Event::Changed);
         if self.stack.is_empty() {
             events.push(Event::Close);
@@ -9903,6 +9971,34 @@ mod tests {
         assert_eq!(screen.commit(), chosen);
         assert!(screen.changed, "Done still applies it");
         assert!(screen.model.unselected.iter().any(|p| p.id == "file/new"));
+    }
+
+    /// `PackSelectionScreen.onClose`: leaving the page commits the model, so a bundled pack the
+    /// player turned off (TML.zip, say) stays off after Done.
+    #[test]
+    fn leaving_the_pack_page_commits_the_selection() {
+        let atlas = atlas();
+        let size = (800.0, 360.0);
+        let mut s = Settings::default();
+        s.resource_packs = vec!["file/TML.zip".into()];
+        let mut ui = OptionsUi {
+            pack_infos: vec![pack_info("file/TML.zip")],
+            pack_selection: s.resource_packs.clone(),
+            ..OptionsUi::default()
+        };
+        ui.show(Page::Packs);
+        let screen = ui.packs(&atlas, size);
+        let i = screen
+            .model
+            .selected
+            .iter()
+            .position(|p| p.id == "file/TML.zip")
+            .expect("the pack starts selected");
+        screen.model.activate(true, i, false);
+        screen.changed = true;
+        let events = ui.back(&mut s);
+        assert!(events.contains(&Event::Packs(Vec::new())));
+        assert!(s.resource_packs.is_empty());
     }
 
     #[test]
