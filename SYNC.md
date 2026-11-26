@@ -95,9 +95,14 @@ common ancestor to merge from. Stable upstream changes that matter to phones are
   the naga module is rewritten to the texture's real format, so IterationRP's bloom no longer
   leaves a white frame.
 - `8e0b8ff5a5` (part) — `LightmapKey`: the 256-texel lightmap recompute is skipped when its
-  inputs did not change. The sprite tick cache and per-frame upload skip are still to port.
+  inputs did not change.
 - `8e0b8ff5a5` (part 2) — skip hand/crosshair global uploads when there is nothing to draw, and
   skip the sunrise fan upload when the sky is not visible.
+- `8e0b8ff5a5` (part 3) — `AnimatedTickCache`: a tick's animated sprite layers are walked and
+  dispatched once. Later frames of the same tick skip the walk; a culled frame still animates a
+  layer that has just come into view, and a title frame marks every layer done. The commit's
+  `has_modes` guard is omitted (this tree has no Polytone `mode`s), and its HUD-sprite skip is
+  moot: `HudRenderer::sprite_animations` has no producer here.
 - Java removed from the app: no runtime download, no on-phone preparation, no exporter bundle
   or `java`/`javac` launchers in the APK. The first-run screen imports the `resources` folder
   prepared on a computer (zipped) and keeps sign-in/offline; nothing is fetched from Mojang.
@@ -547,7 +552,7 @@ gap without porting the intermediate commit first. The prerequisite is named for
 | `211e07fc54` | worldgen | bounded surface-rule cache, fast column writes | 7 files and 1908 insertions against this tree's 563-line `rule.rs` and 442-line `material_stage.rs`; 24 hunks reject, so it needs the absent material-condition refactor first |
 | `e0c1233a27` | -22..-33 MB | zero-alloc `EntityBatch` LUT + Schwartzian sort | needs the 16-material/native-terrain overlay refactor; this tree's `entity_batch.rs` is the older 10-material, 400-line form |
 | `d939fd378d` | +2.5..3.3% RD | faster `ChunkMap` lookups | needs the toroidal-grid/hash refactor in `world.rs`/`chunk_map.rs`, absent here |
-| `8e0b8ff5a5` | +1.1..4.3% RD16 | caching lightmap and skipping unchanged per-frame GPU uploads | lightmap `LightmapKey` cache, the hand/crosshair global-upload skip and the sunrise-fan skip are ported (see the list above); the sprite tick cache and the remaining per-frame upload skip still need this tree's older `gfx.rs` (488 lines, 8 conflict regions) |
+| `8e0b8ff5a5` | +1.1..4.3% RD16 | caching lightmap and skipping unchanged per-frame GPU uploads | ported in full: lightmap `LightmapKey`, the hand/crosshair global-upload skip, the sunrise-fan skip and `AnimatedTickCache` (see the list above). Adaptation: no `has_modes`/HUD-sprite skip (no Polytone `mode`s here, and the HUD sprite list has no producer) |
 | `cb2132352e`, `0c2cff4f46` | +FPS / +SoA | `ColumnSlab`, SoA `Resident`/pages | `0c2cff4f46`'s `PageRuns` half is ported (see above); the `Resident`/`occlusion` SoA rewrites and `cb2132352e`'s `ColumnSlab` still diverge heavily from this tree's older `gfx/occlusion.rs`, `gfx/pages.rs`, `gfx/resident.rs` |
 | `0f0dea6114`, `96d758bf25` | +1.4..2.0% RD / mesh lock | streaming mesh-job pooling | `0f0dea6114` needs `mesh_settings()`/`submit_mesh_candidates` and `hz_laps`, absent here; `96d758bf25` fixes a queue lock held across job building, which this tree never does (`submit` takes the lock per job and builds each region before it) |
 | `5aeaafa6e5` | world | remap section palette slots at pack time | this tree's `PalettedContainer::to_nbt` predates the per-cell dedup the `aliases` table optimises (it copies the palette and words as-is), so the change would replace a cheaper save with a remap |

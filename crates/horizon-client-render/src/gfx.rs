@@ -859,6 +859,71 @@ impl LightmapKey {
     }
 }
 
+/// Tracks which animated sprite layers have already been processed on the current game tick, so
+/// repeated renders of one tick skip the animation walk and its dispatches while a sprite that
+/// becomes visible mid-tick still animates at once.
+struct AnimatedTickCache {
+    /// Last game tick whose animated layers were processed (`None` initially or after a lost frame).
+    tick: Option<u64>,
+    /// True once an unculled pass (`cull_inactive` false, e.g. a title frame) processed every
+    /// animated layer for `tick`.
+    all_layers: bool,
+    /// Bitset of sprite layers already processed for `tick` when `!all_layers`.
+    layers: Vec<u64>,
+}
+
+impl AnimatedTickCache {
+    fn new(words: usize) -> Self {
+        Self {
+            tick: None,
+            all_layers: false,
+            layers: vec![0; words],
+        }
+    }
+
+    /// Drops cached tick state when a frame is abandoned before submission (#13624).
+    fn forget(&mut self) {
+        self.tick = None;
+        self.all_layers = false;
+        self.layers.fill(0);
+    }
+
+    /// Whether every animated layer has already been processed for `tick`.
+    fn all_done_for(&self, tick: u64) -> bool {
+        self.tick == Some(tick) && self.all_layers
+    }
+
+    /// Records that an unculled pass processed every animated layer for `tick`.
+    fn mark_all(&mut self, tick: u64) {
+        self.tick = Some(tick);
+        self.all_layers = true;
+    }
+
+    /// Whether `active` holds an animated layer not yet processed for `tick`, marking every bit in
+    /// `active` as processed for `tick`.
+    fn needs_culled_pass(&mut self, tick: u64, active: &[u64]) -> bool {
+        if self.all_done_for(tick) {
+            return false;
+        }
+        if self.tick != Some(tick) {
+            self.tick = Some(tick);
+            self.all_layers = false;
+            self.layers.clear();
+            self.layers.extend_from_slice(active);
+            return active.iter().any(|&word| word != 0);
+        }
+        if self.layers.len() < active.len() {
+            self.layers.resize(active.len(), 0);
+        }
+        let mut newly_visible = false;
+        for (done, &word) in self.layers.iter_mut().zip(active) {
+            newly_visible |= (word & !*done) != 0;
+            *done |= word;
+        }
+        newly_visible
+    }
+}
+
 pub struct Renderer {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
@@ -1055,6 +1120,8 @@ pub struct Renderer {
     lightmap_sampler: wgpu::Sampler,
     animations: animate::SpriteAnimator,
     active_animated_layers: Vec<u64>,
+    /// Which animated layers already ran this tick, to skip the walk on later frames of a tick.
+    animated_tick: AnimatedTickCache,
     uploads: upload::Uploads,
     /// Section meshes are staged through their own belt into
     /// `section_copies`, which the next frame records its commands after:
@@ -4342,6 +4409,7 @@ impl Renderer {
             lightmap_sampler,
             animations,
             active_animated_layers: vec![0; active_layer_words],
+            animated_tick: AnimatedTickCache::new(active_layer_words),
             uploads,
             section_uploads,
             section_copies: None,
@@ -6660,41 +6728,54 @@ impl Renderer {
         let mut shadow_visible = std::mem::take(&mut self.shadow_visible);
         shadow_visible.clear();
         if self.animated_textures {
-            self.active_animated_layers.fill(0);
-            for v in &visible {
-                let s = self.sections.get(v.slot);
-                for &layer in &*s.animated_layers {
-                    let layer = layer as usize;
-                    self.active_animated_layers[layer / u64::BITS as usize] |=
-                        1_u64 << (layer % u64::BITS as usize);
-                }
-            }
-            for v in &visible_lods {
-                if let Some(tile) = self.lods.get(&v.key) {
-                    for &layer in &*tile.drawn().animated_layers {
-                        let layer = layer as usize;
-                        self.active_animated_layers[layer / u64::BITS as usize] |=
-                            1_u64 << (layer % u64::BITS as usize);
+            // Visibility is collected before terrain draw commands are recorded, so the
+            // animation updates are uploaded here, ahead of every draw in this command buffer.
+            // A tick already covered by an unculled pass needs no walk again; a culled frame
+            // animates only the layers it shows that the tick has not animated yet.
+            if !self.animated_tick.all_done_for(frame.ticks) {
+                if frame.title {
+                    self.animate(&mut encoder, frame.ticks, false);
+                    self.animated_tick.mark_all(frame.ticks);
+                } else {
+                    self.active_animated_layers.fill(0);
+                    for v in &visible {
+                        let s = self.sections.get(v.slot);
+                        for &layer in &*s.animated_layers {
+                            let layer = layer as usize;
+                            self.active_animated_layers[layer / u64::BITS as usize] |=
+                                1_u64 << (layer % u64::BITS as usize);
+                        }
                     }
-                    for &layer in &*tile.mesh.animated_layers {
-                        let layer = layer as usize;
-                        self.active_animated_layers[layer / u64::BITS as usize] |=
-                            1_u64 << (layer % u64::BITS as usize);
+                    for v in &visible_lods {
+                        if let Some(tile) = self.lods.get(&v.key) {
+                            for &layer in &*tile.drawn().animated_layers {
+                                let layer = layer as usize;
+                                self.active_animated_layers[layer / u64::BITS as usize] |=
+                                    1_u64 << (layer % u64::BITS as usize);
+                            }
+                            for &layer in &*tile.mesh.animated_layers {
+                                let layer = layer as usize;
+                                self.active_animated_layers[layer / u64::BITS as usize] |=
+                                    1_u64 << (layer % u64::BITS as usize);
+                            }
+                        }
+                    }
+                    for v in &shadow_visible {
+                        let s = self.sections.get(v.slot);
+                        for &layer in &*s.animated_layers {
+                            let layer = layer as usize;
+                            self.active_animated_layers[layer / u64::BITS as usize] |=
+                                1_u64 << (layer % u64::BITS as usize);
+                        }
+                    }
+                    if self
+                        .animated_tick
+                        .needs_culled_pass(frame.ticks, &self.active_animated_layers)
+                    {
+                        self.animate(&mut encoder, frame.ticks, true);
                     }
                 }
             }
-            for v in &shadow_visible {
-                let s = self.sections.get(v.slot);
-                for &layer in &*s.animated_layers {
-                    let layer = layer as usize;
-                    self.active_animated_layers[layer / u64::BITS as usize] |=
-                        1_u64 << (layer % u64::BITS as usize);
-                }
-            }
-            // Visibility is collected before terrain draw commands are recorded,
-            // so upload the current mask here and keep animation updates ahead
-            // of every draw in this command buffer.
-            self.animate(&mut encoder, frame.ticks, !frame.title);
         }
         self.drawn_sections = visible.len() + visible_lods.len();
         let instances = self.drawn_sections + shadow_visible.len();
@@ -10498,6 +10579,42 @@ mod tests {
             ]]
         );
         assert!(super::outline_vertices(&[], glam::DVec3::ZERO).is_empty());
+    }
+    #[test]
+    fn animated_tick_cache_animates_newly_visible_layers_on_same_tick() {
+        let mut cache = super::AnimatedTickCache::new(2);
+
+        // First culled render of tick 10 sees layer 1.
+        assert!(!cache.all_done_for(10));
+        assert!(cache.needs_culled_pass(10, &[1_u64 << 1, 0]));
+        // Repeated renders of tick 10 with the same or a subset mask skip animation.
+        assert!(!cache.needs_culled_pass(10, &[1_u64 << 1, 0]));
+        assert!(!cache.needs_culled_pass(10, &[0, 0]));
+
+        // A previously culled sprite entering view mid-tick (same word or another word)
+        // must still animate immediately instead of staying stale.
+        assert!(cache.needs_culled_pass(10, &[(1_u64 << 1) | (1_u64 << 5), 0]));
+        assert!(!cache.needs_culled_pass(10, &[1_u64 << 5, 0]));
+        assert!(cache.needs_culled_pass(10, &[1_u64 << 1, 1_u64 << 3]));
+        assert!(!cache.needs_culled_pass(10, &[(1_u64 << 1) | (1_u64 << 5), 1_u64 << 3]));
+
+        // Only a subset ran on tick 10, so an unculled pass still needs to run until marked.
+        assert!(!cache.all_done_for(10));
+        cache.mark_all(10);
+        assert!(cache.all_done_for(10));
+        assert!(!cache.needs_culled_pass(10, &[1_u64 << 60, 1_u64 << 63]));
+
+        // Advancing to tick 11 resets cached layers; an empty frame does not run animation,
+        // and a sprite becoming visible later on tick 11 still animates.
+        assert!(!cache.all_done_for(11));
+        assert!(!cache.needs_culled_pass(11, &[0, 0]));
+        assert!(cache.needs_culled_pass(11, &[1_u64 << 2, 0]));
+        assert!(!cache.needs_culled_pass(11, &[1_u64 << 2, 0]));
+
+        // Abandoning a frame clears the cache so the same tick animates again.
+        cache.forget();
+        assert!(!cache.all_done_for(11));
+        assert!(cache.needs_culled_pass(11, &[1_u64 << 2, 0]));
     }
 }
 
