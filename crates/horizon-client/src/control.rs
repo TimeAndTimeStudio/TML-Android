@@ -524,18 +524,42 @@ mod tests {
 
 /// Frame durations since the last reset, summarized like the Java recorder,
 /// with the CPU part of each frame and GPU times from timestamp queries.
-#[derive(Default)]
 pub struct FrameStats {
     millis: Vec<f32>,
     cpu: Vec<f32>,
     gpu: Vec<f32>,
     /// Milliseconds per frame phase (`PHASES`), one entry per rendered frame.
     phases: Vec<[f32; PHASES.len()]>,
+    /// Whether frames are kept. Only a consumer of [`Self::summary`] (the control
+    /// socket's `stats`, `bench` and `fly`, and the splitscreen readout) ever reads
+    /// them, and a phone opens no socket: recording there would only fill memory,
+    /// up to [`Self::LIMIT`] frames of it. Desktop keeps recording as before.
+    recording: bool,
     static_snapshot_rebuilds: u64,
     static_snapshot_bytes_built: u64,
     static_bytes_uploaded: u64,
     static_entities_drawn: u64,
     dynamic_entities_drawn: u64,
+}
+
+impl Default for FrameStats {
+    fn default() -> Self {
+        Self {
+            millis: Vec::new(),
+            cpu: Vec::new(),
+            gpu: Vec::new(),
+            phases: Vec::new(),
+            // Nothing on a phone reads them: no control socket is opened there, and
+            // `LIMIT` frames of four buffers is tens of megabytes of resident memory
+            // that only ever grows. Desktop keeps recording, where `horizon-ctl` does.
+            recording: !cfg!(target_os = "android"),
+            static_snapshot_rebuilds: 0,
+            static_snapshot_bytes_built: 0,
+            static_bytes_uploaded: 0,
+            static_entities_drawn: 0,
+            dynamic_entities_drawn: 0,
+        }
+    }
 }
 
 /// The parts of a frame's CPU time: world streaming and uploads, game ticks,
@@ -563,19 +587,19 @@ fn percentiles(values: &[f32]) -> serde_json::Value {
 impl FrameStats {
     const LIMIT: usize = 1 << 20;
     pub fn record(&mut self, millis: f32) {
-        if self.millis.len() < Self::LIMIT {
+        if self.recording && self.millis.len() < Self::LIMIT {
             self.millis.push(millis);
         }
     }
     /// The frame's own work: its duration minus waits for the GPU, the
     /// display and the frame limiter.
     pub fn record_cpu(&mut self, millis: f32) {
-        if self.cpu.len() < Self::LIMIT {
+        if self.recording && self.cpu.len() < Self::LIMIT {
             self.cpu.push(millis);
         }
     }
     pub fn record_phases(&mut self, millis: [f32; PHASES.len()]) {
-        if self.phases.len() < Self::LIMIT {
+        if self.recording && self.phases.len() < Self::LIMIT {
             self.phases.push(millis);
         }
     }
@@ -600,7 +624,7 @@ impl FrameStats {
             .into()
     }
     pub fn record_gpu(&mut self, millis: &[f32]) {
-        if self.gpu.len() < Self::LIMIT {
+        if self.recording && self.gpu.len() < Self::LIMIT {
             self.gpu.extend_from_slice(millis);
         }
     }

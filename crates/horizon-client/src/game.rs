@@ -16920,23 +16920,31 @@ impl Game<'_> {
                 // mesh of a waiting section replaces it, and sections of
                 // chunks no longer loaded are dropped.
                 let pending = &mut self.pending_uploads;
-                let fresh: horizon_client::fast_hash::FxHashSet<(i32, i32, i32)> =
-                    uploads.iter().map(|(k, _)| *k).collect();
-                let chunks = &self.world.chunks;
-                let loaded = |k: &(i32, i32, i32)| chunks.contains_key(&(k.0, k.2));
-                let mut spent: Vec<_> = pending
-                    .extract_if(.., |(k, _)| fresh.contains(k) || !loaded(k))
-                    .collect();
-                for upload in uploads {
-                    if loaded(&upload.0) {
-                        pending.push(upload);
-                    } else {
-                        spent.push(upload);
+                let mut spent = Vec::new();
+                // Nothing new arrived: what waits is already nearest first and
+                // still loaded, so only the budget below is left to do. A frame
+                // that merely drains the queue must not rebuild the set and
+                // re-sort it, which is what a player in flight does every frame.
+                if !uploads.is_empty() {
+                    let fresh: horizon_client::fast_hash::FxHashSet<(i32, i32, i32)> =
+                        uploads.iter().map(|(k, _)| *k).collect();
+                    let chunks = &self.world.chunks;
+                    let loaded = |k: &(i32, i32, i32)| chunks.contains_key(&(k.0, k.2));
+                    spent = pending
+                        .extract_if(.., |(k, _)| fresh.contains(k) || !loaded(k))
+                        .collect();
+                    for upload in uploads {
+                        if loaded(&upload.0) {
+                            pending.push(upload);
+                        } else {
+                            spent.push(upload);
+                        }
                     }
+                    let centre = self.streaming.center;
+                    let far =
+                        |k: &(i32, i32, i32)| (k.0 - centre.0).pow(2) + (k.2 - centre.1).pow(2);
+                    pending.sort_unstable_by_key(|(k, _)| std::cmp::Reverse(far(k)));
                 }
-                let centre = self.streaming.center;
-                let far = |k: &(i32, i32, i32)| (k.0 - centre.0).pow(2) + (k.2 - centre.1).pow(2);
-                pending.sort_unstable_by_key(|(k, _)| std::cmp::Reverse(far(k)));
                 let (limit, budget) = if budgeted {
                     (
                         g.chunk_updates as usize,

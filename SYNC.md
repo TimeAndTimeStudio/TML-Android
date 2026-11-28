@@ -68,6 +68,14 @@ the merge.
   codegen unit per crate, `incremental = false`) instead of `fast`, which
   leaves cross-crate inlining between the game crates on the table on every
   frame.
+- Stop collecting frame times nobody reads: `FrameStats` kept every frame in
+  four `Vec`s allowed to grow to `LIMIT` (1 << 20) entries — tens of megabytes
+  of resident memory on a phone, where no control socket is ever opened to read
+  them. Recording is now off on Android and unchanged on desktop, where
+  `horizon-ctl stats`, `bench` and `fly` do read it.
+- A frame that only drains the chunk upload queue no longer rebuilds the
+  fresh-key set and re-sorts the whole pending list: a player in flight hit
+  that path every frame with an empty `uploads` list.
 
 ## Ported after the squash (2026-11-23)
 
