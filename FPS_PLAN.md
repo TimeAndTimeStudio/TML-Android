@@ -1,6 +1,6 @@
 # Plan: frame rate while flying and while a world loads
 
-Status: in progress. P0 has landed (frame-time collection, upload queue); P1 is next.
+Status: in progress. P0 (frame-time collection, upload queue) and P1 item 4 (upload share of a frame) have landed.
 
 ## 1. The problem
 

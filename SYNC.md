@@ -76,6 +76,12 @@ the merge.
 - A frame that only drains the chunk upload queue no longer rebuilds the
   fresh-key set and re-sorts the whole pending list: a player in flight hit
   that path every frame with an empty `uploads` list.
+- Pace the arriving view's uploads by the frame they are in: the 6 ms
+  `AUTO_UPLOAD_TIME_ARRIVING` share is now what is left of a 60 Hz frame after
+  the world update and the ticks (`UPLOAD_SHARE_OF_FRAME`, 10 ms), and never
+  less than `AUTO_UPLOAD_TIME`. A frame already over its share takes less
+  terrain in instead of pushing itself further over; the view still fills, a
+  frame later.
 
 ## Ported after the squash (2026-11-23)
 

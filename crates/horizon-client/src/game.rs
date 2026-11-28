@@ -473,6 +473,11 @@ const AUTO_UPLOAD_TIME: Duration = Duration::from_millis(2);
 /// open, a teleport): the meshes waiting then are the view itself, not edits
 /// to it, so a frame gives them more of its time to fill the view sooner.
 const AUTO_UPLOAD_TIME_ARRIVING: Duration = Duration::from_millis(6);
+/// What a 60 Hz frame leaves the world update and the ticks before the upload
+/// share shrinks: the rest of the frame is the render's and the display's. A
+/// frame already past it uploads the minimum, so a slow frame does not make
+/// itself slower by taking more terrain in.
+const UPLOAD_SHARE_OF_FRAME: Duration = Duration::from_millis(10);
 /// A frame's finished meshes up to this many upload at once, unqueued.
 const AUTO_UPLOADS_AT_ONCE: usize = 8;
 
@@ -16956,10 +16961,15 @@ impl Game<'_> {
                 let (mut count, mut bytes) = (0, 0u64);
                 // Without the player's budgets, uploads stop once they took
                 // AUTO_UPLOAD_TIME of this frame (at least one goes): a burst of
-                // finished meshes spreads over frames, nearest first.
+                // finished meshes spreads over frames, nearest first. While the
+                // view is still arriving they may take more, but only what is
+                // left of a 60 Hz frame after the update and the ticks: a frame
+                // that is already late takes less terrain in, not more.
                 let auto = !budgeted;
                 let auto_time = if arriving {
-                    AUTO_UPLOAD_TIME_ARRIVING
+                    UPLOAD_SHARE_OF_FRAME
+                        .saturating_sub(self.previous.elapsed())
+                        .clamp(AUTO_UPLOAD_TIME, AUTO_UPLOAD_TIME_ARRIVING)
                 } else {
                     AUTO_UPLOAD_TIME
                 };
