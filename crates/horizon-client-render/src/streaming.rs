@@ -472,6 +472,8 @@ pub struct Streaming {
     /// What the queued jobs' priorities were computed from (`requeue`): the
     /// centre, the band, and the extra areas.
     queue_basis: (((i32, i32), Option<Band>), Vec<((i32, i32), i32)>),
+    /// When the queue was last ranked (`requeue`, `RANK_EVERY`).
+    ranked_at: std::time::Instant,
     finishing: FxHashSet<(i32, i32)>,
     decorates: bool,
     /// `ChunkGenerator::decorates_beside_final`.
@@ -1034,6 +1036,7 @@ impl Streaming {
             decoration_order: DecorationOrder::default(),
             order_area: None,
             queue_basis: Default::default(),
+            ranked_at: std::time::Instant::now(),
             finishing: Default::default(),
             decorates: generator.decorates(),
             saves_beside_final: generator.decorates_beside_final(),
@@ -1251,6 +1254,15 @@ impl Streaming {
         if self.queue_basis.0 == basis && self.queue_basis.1 == self.extra {
             return;
         }
+        // A player in flight moves the centre a block or two every frame, and
+        // ranking the whole queue that often only reorders work the workers have
+        // already taken: it waits for RANK_EVERY between rankings, unless the
+        // player's own ticket areas changed (those are few, and their jobs must
+        // not wait). Jobs queued meanwhile come in ranked (`submit`).
+        if self.queue_basis.1 == self.extra && self.ranked_at.elapsed() < RANK_EVERY {
+            return;
+        }
+        self.ranked_at = std::time::Instant::now();
         self.queue_basis = (basis, self.extra.clone());
         let mut queue = self.shared.queue.lock().unwrap();
         rank_again(&mut queue, |x, z| self.distance(x, z));
@@ -2372,6 +2384,11 @@ pub fn in_view_distance(center: (i32, i32), radius: i32, x: i32, z: i32) -> bool
 /// How long a view's columns are waited for (`ViewArrival`): a server may never
 /// fill it.
 const VIEW_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+/// How often a moved centre ranks the generation queue again (`requeue`): the
+/// queued jobs' distance priorities are a hint for the workers, and a player in
+/// flight would otherwise rebuild the whole queue every frame for a block of
+/// movement.
+const RANK_EVERY: std::time::Duration = std::time::Duration::from_millis(250);
 /// Whether the columns of a view (centre, radius) have all arrived, as a client
 /// sees them come: a server forgets the old view's columns, then sends the new
 /// ones nearest first, so the view's outermost ones come last. Single player

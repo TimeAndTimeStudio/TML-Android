@@ -82,6 +82,11 @@ the merge.
   less than `AUTO_UPLOAD_TIME`. A frame already over its share takes less
   terrain in instead of pushing itself further over; the view still fills, a
   frame later.
+- Rank the generation queue at most every 250 ms while the centre moves
+  (`RANK_EVERY`): `requeue` rebuilt the whole `BinaryHeap` and cloned the extra
+  areas on every frame a player in flight moved a block or two. Jobs queued
+  meanwhile are ranked as they are submitted (`submit`), and a change in the
+  player's own ticket areas still ranks at once.
 
 ## Ported after the squash (2026-11-23)
 
