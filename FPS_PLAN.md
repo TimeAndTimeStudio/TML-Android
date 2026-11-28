@@ -1,6 +1,6 @@
 # Plan: frame rate while flying and while a world loads
 
-Status: in progress. P0 landed; P1 item 4 (upload share of a frame) and the `requeue` rate limit landed. Next step needs numbers from the phone (section 7).
+Status: in progress. P0 landed; P1 item 4 (upload share of a frame) and the `requeue` rate limit landed. The phone's overlay then answered section 7: 13–25 ms of GPU time against 5–6 ms of CPU. P2's flat-draws trial landed to make the phone measure the render side itself; what it logs decides the next render change.
 
 ## 1. The problem
 
@@ -124,6 +124,13 @@ Also landed with P1: `requeue` ranks the generation queue at most every 250 ms
 8. Review the per-frame `flatten` prepare (`gfx.rs:7599`): it rebuilds instance
    data for every visible section each frame. If a section's instances did not
    change, they should not be rebuilt.
+9. ~~Try flat section draws on Mali~~ **landed** (`game.rs trial_flat_draws`):
+   a frame without a shader pack draws a call a section on Mali while flat
+   exists (vertex storage and compute are there), the threshold aside. Adreno's
+   Vulkan measured 46.05 ms against 22.30 ms flat, so Android tries flat for
+   ten seconds after the world warms up, keeps it only when the frame time held
+   within 2 %, and logs the answer; the culling trial waits for that answer.
+   `section-draws flat` / `HORIZON_FLAT_DRAWS=1` force it for a manual A/B.
 
 ### P3 — explicitly not in this plan
 
@@ -166,7 +173,11 @@ Two numbers decide the next change, and the game already reports both:
 2. If `gpu` is the larger one, the next work is render-side (what is drawn per
    section, not how fast the sections arrive): the draw count per section on
    Mali, and whether `flat` batching (`gfx/flat.rs`) can be enabled there with
-   a sane `min_sections`. Both need a device run to judge.
+   a sane `min_sections`. `trial_flat_draws` now answers the `flat` half on the
+   phone itself — its logcat line says "kept flat section draws" or "dropped
+   flat section draws" with both frame times; with those numbers, and the F3
+   screen's "Horizon GPU" per-pass lines (`own_pass_times`), the next span is
+   picked from data rather than guesses.
 3. If `cpu` is the larger one, `HORIZON_SPIKES=8` in `horizon-args.txt` writes
    one logcat line per slow frame naming the spans it spent its time in; that
    line is enough to pick the next span to attack.

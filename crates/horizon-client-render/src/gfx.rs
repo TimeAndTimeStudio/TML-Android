@@ -4805,6 +4805,24 @@ impl Renderer {
         self.flat_on = on;
         Ok(())
     }
+    /// Whether flat section draws exist here but a frame without a shader pack never draws
+    /// them (the section count they need is out of reach): what the phone's trial may turn on
+    /// (`game.rs trial_flat_draws`).
+    pub fn flat_draws_triable(&self) -> bool {
+        self.flat_on
+            && self
+                .flat
+                .as_ref()
+                .is_some_and(|flat| flat.min_sections == usize::MAX)
+    }
+    /// Draws a frame without a shader pack flat whatever the section count (`on`), or back to
+    /// the per-section draws, for the phone's trial and `section-draws flat`.
+    pub fn set_flat_draws_always(&mut self, on: bool) {
+        let Some(flat) = &mut self.flat else {
+            return;
+        };
+        flat.min_sections = if on { 0 } else { usize::MAX };
+    }
     /// Drops the blurred menu frame kept for `Frame::menu_blur_cache`: the next blurred
     /// frame draws the world again (the menu was left, or a setting changed under it).
     pub fn forget_menu_blur(&mut self) {

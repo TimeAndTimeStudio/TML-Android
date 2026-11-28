@@ -386,7 +386,12 @@ impl Game<'_> {
                 let r = self.renderer.as_mut().ok_or("no renderer")?;
                 match words.get(1).copied() {
                     None => {}
-                    Some("flat") => r.set_flat_draws(true)?,
+                    Some("flat") => {
+                        r.set_flat_draws(true)?;
+                        // A device that keeps flat for shader packs only needs its
+                        // section-count bar lowered too, or nothing changes.
+                        r.set_flat_draws_always(true);
+                    }
                     Some("indirect") => {
                         r.set_flat_draws(false)?;
                         r.set_indirect_draws(true);

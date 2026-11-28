@@ -2534,6 +2534,13 @@ struct Game<'a> {
     draws_trial_at: Option<Instant>,
     draws_trial_baseline: f32,
     draws_trial_started: Option<Instant>,
+    /// The trial of flat section draws on Android, where frames without a shader pack
+    /// otherwise keep a call a section: when to start it, the frame time before it, when it
+    /// began, and whether its answer is in (`trial_flat_draws`).
+    flat_trial_at: Option<Instant>,
+    flat_trial_baseline: f32,
+    flat_trial_started: Option<Instant>,
+    flat_trial_done: bool,
     started: Instant,
     /// `SpectatorGui`: the menu a spectator opens with the hotbar keys.
     spectator_gui: horizon_client::spectator_menu::SpectatorGui,
@@ -18601,6 +18608,7 @@ impl Game<'_> {
                         r.gpu_times.clear();
                         self.platform_frame_hint(rendered, cpu);
                     }
+                    self.trial_flat_draws();
                     self.trial_gpu_culling();
                     if let Some(sample) = diagnostic_sample {
                         let context = self.diagnostic_context();
@@ -19048,6 +19056,10 @@ impl<'a> Game<'a> {
             draws_trial_at: None,
             draws_trial_baseline: 0.0,
             draws_trial_started: None,
+            flat_trial_at: None,
+            flat_trial_baseline: 0.0,
+            flat_trial_started: None,
+            flat_trial_done: false,
             health_hud: hud_layout::HealthHud::default(),
             started: now,
             spectator_gui: Default::default(),
@@ -23244,6 +23256,77 @@ impl Game<'_> {
             self.modifiers = horizon_client::input_mode::held_modifiers(&self.physical_keys);
         }
     }
+    /// Android: a frame without a shader pack draws a section at a time here, while a GPU that
+    /// can read the arena from its vertex stage could draw the frame's sections as one index
+    /// list (`flat`). Only Adreno's Vulkan was measured (46.05 ms of GPU time a frame against
+    /// 22.30 ms flat on an Adreno 710), so the other phones keep a call a section until their
+    /// own says otherwise. Once the world has warmed up, flat is tried for ten seconds and kept
+    /// only when the frame time held: the log says which way it went, and a device that says no
+    /// is back on the per-section draws for the rest of the run.
+    fn trial_flat_draws(&mut self) {
+        if !cfg!(target_os = "android") || self.flat_trial_done {
+            return;
+        }
+        let now = Instant::now();
+        let Some(renderer) = self.renderer.as_mut() else {
+            return;
+        };
+        if !renderer.flat_draws_triable() {
+            // Flat is off here, or a frame without a pack already draws flat (Adreno, Metal):
+            // there is nothing to compare.
+            self.flat_trial_done = true;
+            return;
+        }
+        if self.flat_trial_started.is_none() {
+            let at = *self
+                .flat_trial_at
+                .get_or_insert(now + Duration::from_secs(25));
+            if now < at {
+                return;
+            }
+        }
+        let Some(summary) = self.frame_graph.summary() else {
+            return;
+        };
+        let ms = if summary.gpu_ms > 0.0 {
+            summary.gpu_ms
+        } else {
+            summary.frame_ms
+        };
+        let Some(started) = self.flat_trial_started else {
+            if ms <= 0.0 {
+                return;
+            }
+            self.flat_trial_baseline = ms;
+            self.flat_trial_started = Some(now);
+            renderer.set_flat_draws_always(true);
+            log::info!(
+                "Horizon renderer: trying flat section draws on this GPU ({ms:.1} ms a frame \
+                 before)"
+            );
+            return;
+        };
+        if now.duration_since(started) < Duration::from_secs(10) {
+            return;
+        }
+        // The copy and the index list cost GPU time of their own, so flat has to pay for them:
+        // the same bar the culling trial keeps its pair by.
+        let keep = ms <= self.flat_trial_baseline * 1.02;
+        if !keep {
+            renderer.set_flat_draws_always(false);
+        }
+        log::info!(
+            "Horizon renderer: {} ({:.1} ms a frame before, {ms:.1} ms in the trial)",
+            if keep {
+                "kept flat section draws"
+            } else {
+                "dropped flat section draws; a call a section again"
+            },
+            self.flat_trial_baseline,
+        );
+        // Once a run: the trial's answer stands until the next start.
+        self.flat_trial_done = true;
+    }
     /// Android: indirect multi-draws are off on the platform's default (they measured slower on
     /// an Adreno 710), and with them occlusion culling never runs. Once the world has warmed
     /// up, the pair is tried and kept unless the frame time clearly gets worse or it hides
@@ -23252,6 +23335,16 @@ impl Game<'_> {
     /// fastest of the two on its own GPU.
     fn trial_gpu_culling(&mut self) {
         if !cfg!(target_os = "android") {
+            return;
+        }
+        // Flat is measured alone first (`trial_flat_draws`), or both trials would judge a
+        // frame the other one just changed.
+        if !self.flat_trial_done
+            && self
+                .renderer
+                .as_ref()
+                .is_some_and(|r| r.flat_draws_triable())
+        {
             return;
         }
         let now = Instant::now();

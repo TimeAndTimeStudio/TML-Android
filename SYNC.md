@@ -288,6 +288,16 @@ common ancestor to merge from. Stable upstream changes that matter to phones are
   pack's shading (the default: cheapest, and what most players want), 1 one flat layer of the
   pack's, 2 the two soft layers. With 1 or 2 the game's mesh is discarded as before; with 0 the
   composite's cloud code never runs.
+- Frame rate, GPU side: the phone's overlay put a flying frame at 13–25 ms of GPU time against
+  5–6 ms of CPU, so the next item was render-side. A frame without a shader pack draws a
+  section at a time on Mali (`flat` exists there — vertex storage and compute are present —
+  but `min_sections` was out of reach, leaving flat to packs only), while Adreno's Vulkan
+  measured 46.05 ms against 22.30 ms flat. Android now tries flat for ten seconds once the
+  world has warmed up, keeps it only when the frame time held within 2% (`trial_flat_draws`,
+  the bar the culling trial uses) and logs which way it went; the culling trial waits for the
+  answer so the two never judge the same frame. `section-draws flat` lowers the bar too, so
+  the A/B knob works on a phone (`set_flat_draws_always`); `HORIZON_FLAT_DRAWS=1` still forces
+  it from `horizon-args.txt`.
 
 ## Ported after the shader-pack removal (2026-11-24)
 
