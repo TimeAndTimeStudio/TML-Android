@@ -1,6 +1,6 @@
 # Plan: frame rate while flying and while a world loads
 
-Status: in progress. P0 (frame-time collection, upload queue) and P1 item 4 (upload share of a frame) have landed.
+Status: in progress. P0 landed; P1 item 4 (upload share of a frame) and the `requeue` rate limit landed. Next step needs numbers from the phone (section 7).
 
 ## 1. The problem
 
@@ -102,18 +102,19 @@ Expected: small but free. Mainly removes load-time allocation churn.
 
 ### P1 — terrain pacing (the flying fix)
 
-4. Make the arriving budget adaptive: while `arriving`, spend up to
-   `AUTO_UPLOAD_TIME_ARRIVING` but stop early once the frame's CPU time already
-   exceeds a target (measure with the existing frame clock, no new collection).
-   This is the same "keep it only if it pays" shape as the culling trial.
-5. Raise the mesh in-flight cap only when the pool is idle on generation and
-   lighting (`streaming.rs:2016`), so meshes for the view arrive sooner without
-   starving the chunk pipeline.
-6. Prioritise mesh jobs by distance to the view direction, not only by ring, so
-   what the player is flying into is meshed first.
+4. ~~Make the arriving budget adaptive~~ **done** (`UPLOAD_SHARE_OF_FRAME`): while
+   `arriving`, the upload share is what is left of a 10 ms frame after the update
+   and the ticks, within `[AUTO_UPLOAD_TIME, AUTO_UPLOAD_TIME_ARRIVING]`. It can
+   only ever reduce the share, so steady state is untouched.
+5. ~~Raise the mesh in-flight cap~~ **deferred**: `room = workers * 32` already
+   limits *columns* per frame (`streaming.rs:2016`) and self-limits once
+   `meshing` grows, so more in flight mostly means more stale jobs.
+6. ~~Prioritise mesh jobs by view direction~~ **deferred**: `nearest_first` is
+   radial on purpose; weighting by the facing would starve what the player turns
+   towards mid-turn. Worth revisiting only with measurements.
 
-Expected: the main flying win. Risk: overspending a frame turns into hitches, so
-this is the item that most needs the A/B rule.
+Also landed with P1: `requeue` ranks the generation queue at most every 250 ms
+(`RANK_EVERY`) instead of on every block the player moves.
 
 ### P2 — render path while moving
 
@@ -146,5 +147,26 @@ this is the item that most needs the A/B rule.
 ## 6. Rollback
 
 Every item is a separate commit, so a regression is reverted by reverting one
-commit. Items 4 and 5 additionally keep their old constants behind the trial
-check, so they can be disabled without a revert if the numbers are ambiguous.
+commit. None of the landed ones can change what is drawn, so a revert is only
+about frame time or how fast the view fills.
+
+## 7. What the next step needs from a run on the phone
+
+The changes above remove work that provably had no reader and work that ran
+every frame for a queue the workers had already taken. Whether the frame rate
+then reaches 60 depends on what is actually spending the 16.6 ms, and that
+cannot be guessed from a desk: the last measurement of this device put a frame
+at about 22 ms with occlusion culling off, which is a **GPU** bound, and no CPU
+change reaches 60 past it.
+
+Two numbers decide the next change, and the game already reports both:
+
+1. Turn the performance overlay on (`overlay stats`, or the setting) and read
+   `cpu` and `gpu` milliseconds while flying, and again while a world loads.
+2. If `gpu` is the larger one, the next work is render-side (what is drawn per
+   section, not how fast the sections arrive): the draw count per section on
+   Mali, and whether `flat` batching (`gfx/flat.rs`) can be enabled there with
+   a sane `min_sections`. Both need a device run to judge.
+3. If `cpu` is the larger one, `HORIZON_SPIKES=8` in `horizon-args.txt` writes
+   one logcat line per slow frame naming the spans it spent its time in; that
+   line is enough to pick the next span to attack.
