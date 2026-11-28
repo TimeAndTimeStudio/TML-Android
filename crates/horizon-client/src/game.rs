@@ -20997,6 +20997,7 @@ fn start_game<'a>(
     game.mobile_init();
     game.start_agent_control()?;
     if let Some(scenario) = game.options.benchmark.clone() {
+        game.frame_stats.set_recording(true);
         let control = game
             .control
             .get_or_insert_with(horizon_client::control::Server::local);

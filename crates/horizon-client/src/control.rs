@@ -586,6 +586,11 @@ fn percentiles(values: &[f32]) -> serde_json::Value {
 
 impl FrameStats {
     const LIMIT: usize = 1 << 20;
+    /// Keep frames from now on, or stop: a consumer that reads them (the control
+    /// socket) says so when it opens.
+    pub fn set_recording(&mut self, on: bool) {
+        self.recording = on;
+    }
     pub fn record(&mut self, millis: f32) {
         if self.recording && self.millis.len() < Self::LIMIT {
             self.millis.push(millis);

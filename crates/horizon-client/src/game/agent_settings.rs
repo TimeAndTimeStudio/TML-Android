@@ -36,6 +36,7 @@ impl Game<'_> {
             let server = control::Server::start(path)
                 .map_err(|e| format!("control socket {}: {e}", path.display()))?;
             log::info!("Horizon: control socket {}", server.path().display());
+            self.frame_stats.set_recording(true);
             self.control = Some(server);
         } else if self.agent_control_on {
             self.open_agent_socket();
@@ -50,6 +51,7 @@ impl Game<'_> {
         match control::Server::start(&path) {
             Ok(server) => {
                 log::info!("Horizon: control socket {}", server.path().display());
+                self.frame_stats.set_recording(true);
                 self.control = Some(server);
             }
             Err(e) => log::warn!("Horizon: control socket {}: {e}", path.display()),
@@ -70,6 +72,8 @@ impl Game<'_> {
             if open {
                 log::info!("Horizon: control socket closed");
                 self.control = None;
+                // Nothing reads the frame times now.
+                self.frame_stats.set_recording(false);
             }
         } else if changed && wanted && self.control.is_none() {
             self.open_agent_socket();
